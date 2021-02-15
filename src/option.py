@@ -147,6 +147,18 @@ parser.add_argument('--save_results', action='store_true',
 parser.add_argument('--save_gt', action='store_true',
                     help='save low-resolution and high-resolution images together')
 
+# Very deep SR net via KD
+parser.add_argument('--T_model', type=str, 
+                    help='teacher model name')
+parser.add_argument('--T_weights', type=str,
+                    help='teacher checkpoint for KD')
+parser.add_argument('--T_n_resblocks', type=int, default=16,
+                    help='number of residual blocks')
+parser.add_argument('--T_n_feats', type=int, default=64,
+                    help='number of feature maps')
+parser.add_argument('--lw_kd', type=float, default=1,
+                    help='loss weight of the kd loss')
+
 args = parser.parse_args()
 template.set_template(args)
 

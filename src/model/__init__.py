@@ -27,13 +27,14 @@ class Model(nn.Module):
         if args.precision == 'half':
             self.model.half()
 
-        self.load(
-            ckp.get_path('model'),
-            pre_train=args.pre_train,
-            resume=args.resume,
-            cpu=args.cpu
-        )
-        print(self.model, file=ckp.log_file)
+        if ckp:
+            self.load(
+                ckp.get_path('model'),
+                pre_train=args.pre_train,
+                resume=args.resume,
+                cpu=args.cpu
+            )
+            print(self.model, file=ckp.log_file)
 
     def forward(self, x, idx_scale):
         self.idx_scale = idx_scale
