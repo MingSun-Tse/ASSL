@@ -10,13 +10,16 @@ from option import args
 torch.manual_seed(args.seed)
 checkpoint = utility.checkpoint(args)
 
-# @mst: idea of very deep via KD
-if args.T_model:
-    from trainer_kd import TrainerKD as Trainer
-else:
+# @mst: select different trainers corresponding to different methods
+if args.method in ['']:
     from trainer import Trainer
+elif args.method in ['kd']:
+    from trainer_kd import TrainerKD as Trainer
+elif args.method in ['prune']:
+    from trainer import Trainer
+    from pruner import pruner_dict
 
-# @mst: idea of very deep via KD
+# @mst: KD
 def set_up_teacher(args, checkpoint, T_model, T_weights, T_n_resblocks, T_n_feats):
     # update args
     args = copy.deepcopy(args) # avoid modifying the original args
@@ -45,13 +48,17 @@ def main():
         if checkpoint.ok:
             loader = data.Data(args)
             
-            # @mst: very deep
-            if args.T_model:
+            # @mst: different methods require different model settings
+            if args.method in ['']: # original setting
+                _model = model.Model(args, checkpoint)
+            elif args.method in ['kd']:
                 _model_S = model.Model(args, checkpoint)
                 _model_T = set_up_teacher(args, checkpoint, args.T_model, args.T_weights, args.T_n_resblocks, args.T_n_feats)
                 _model = [_model_T, _model_S]
-            else:
+            elif args.method in ['prune']:
                 _model = model.Model(args, checkpoint)
+                pruner = pruner_dict[args.pruner].Pruner(_model, args, checkpoint, passer=None)
+                _model = pruner.prune() # get the pruned model as initialization for later finetuning
 
             _loss = loss.Loss(args, checkpoint) if not args.test_only else None
             t = Trainer(args, loader, _model, _loss, checkpoint)

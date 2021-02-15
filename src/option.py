@@ -147,7 +147,11 @@ parser.add_argument('--save_results', action='store_true',
 parser.add_argument('--save_gt', action='store_true',
                     help='save low-resolution and high-resolution images together')
 
-# Very deep SR net via KD
+# KD
+parser.add_argument('--method', type=str, default='', choices=['', 'kd', 'prune'],
+                    help='method name')
+parser.add_argument('--pruner', type=str, default='l1', choices=['l1', 'GReg-1'],
+                    help='pruning name')
 parser.add_argument('--T_model', type=str, 
                     help='teacher model name')
 parser.add_argument('--T_weights', type=str,
