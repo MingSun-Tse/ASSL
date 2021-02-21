@@ -103,18 +103,19 @@ class Loss(nn.modules.loss._Loss):
         return ''.join(log)
 
     def plot_loss(self, apath, epoch):
-        axis = np.linspace(1, epoch, epoch)
-        for i, l in enumerate(self.loss):
-            label = '{} Loss'.format(l['type'])
-            fig = plt.figure()
-            plt.title(label)
-            plt.plot(axis, self.log[:, i].numpy(), label=label)
-            plt.legend()
-            plt.xlabel('Epochs')
-            plt.ylabel('Loss')
-            plt.grid(True)
-            plt.savefig(os.path.join(apath, 'loss_{}.pdf'.format(l['type'])))
-            plt.close(fig)
+        if epoch > 0:
+            axis = np.linspace(1, epoch, epoch)
+            for i, l in enumerate(self.loss):
+                label = '{} Loss'.format(l['type'])
+                fig = plt.figure()
+                plt.title(label)
+                plt.plot(axis, self.log[:, i].numpy(), label=label)
+                plt.legend()
+                plt.xlabel('Epochs')
+                plt.ylabel('Loss')
+                plt.grid(True)
+                plt.savefig(os.path.join(apath, 'loss_{}.pdf'.format(l['type'])))
+                plt.close(fig)
 
     def get_loss_module(self):
         if self.n_GPUs == 1:

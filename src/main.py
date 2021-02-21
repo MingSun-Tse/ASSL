@@ -10,12 +10,17 @@ from option import args
 torch.manual_seed(args.seed)
 checkpoint = utility.checkpoint(args)
 
+
+# @mst: set up project dir
+from logger import Logger
+logger = Logger(args)
+
 # @mst: select different trainers corresponding to different methods
 if args.method in ['']:
     from trainer import Trainer
-elif args.method in ['kd']:
+elif args.method in ['KD']:
     from trainer_kd import TrainerKD as Trainer
-elif args.method in ['prune']:
+elif args.method in ['L1', 'GReg-1']:
     from trainer import Trainer
     from pruner import pruner_dict
 
@@ -51,13 +56,17 @@ def main():
             # @mst: different methods require different model settings
             if args.method in ['']: # original setting
                 _model = model.Model(args, checkpoint)
-            elif args.method in ['kd']:
+            elif args.method in ['KD']:
                 _model_S = model.Model(args, checkpoint)
                 _model_T = set_up_teacher(args, checkpoint, args.T_model, args.T_weights, args.T_n_resblocks, args.T_n_feats)
                 _model = [_model_T, _model_S]
-            elif args.method in ['prune']:
+            elif args.method in ['L1', 'GReg-1']:
                 _model = model.Model(args, checkpoint)
-                pruner = pruner_dict[args.pruner].Pruner(_model, args, checkpoint, passer=None)
+                class passer: pass
+                passer.ckp = checkpoint
+                passer.loss = loss.Loss(args, checkpoint) if not args.test_only else None
+                passer.loader = loader
+                pruner = pruner_dict[args.method].Pruner(_model, args, logger=logger, passer=passer)
                 _model = pruner.prune() # get the pruned model as initialization for later finetuning
 
             _loss = loss.Loss(args, checkpoint) if not args.test_only else None

@@ -1,5 +1,7 @@
 import argparse
 import template
+from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg, merge_args
+from logger import Logger
 
 parser = argparse.ArgumentParser(description='EDSR and MDSR')
 
@@ -147,11 +149,16 @@ parser.add_argument('--save_results', action='store_true',
 parser.add_argument('--save_gt', action='store_true',
                     help='save low-resolution and high-resolution images together')
 
-# KD
-parser.add_argument('--method', type=str, default='', choices=['', 'kd', 'prune'],
+# Routine arguments to set up experiment dir
+parser.add_argument('--project_name', type=str, default="")
+# parser.add_argument('--debug', action="store_true")
+parser.add_argument('--screen_print', action="store_true")
+parser.add_argument('--print_interval', type=int, default=20)
+parser.add_argument('--test_interval', type=int, default=100)
+
+# Lightweight SR
+parser.add_argument('--method', type=str, default='', choices=['', 'KD', 'L1', 'GReg-1'],
                     help='method name')
-parser.add_argument('--pruner', type=str, default='l1', choices=['l1', 'GReg-1'],
-                    help='pruning name')
 parser.add_argument('--T_model', type=str, 
                     help='teacher model name')
 parser.add_argument('--T_weights', type=str,
@@ -162,6 +169,21 @@ parser.add_argument('--T_n_feats', type=int, default=64,
                     help='number of feature maps')
 parser.add_argument('--lw_kd', type=float, default=1,
                     help='loss weight of the kd loss')
+parser.add_argument('--wg', type=str, default='filter', choices=['filter', 'weight'],
+                    help='weight group to prune')
+parser.add_argument('--stage_pr', type=str, default="", 
+                    help='to appoint layer-wise pruning ratio')
+parser.add_argument('--skip_layers', type=str, default="", 
+                    help='layer id to skip when pruning')
+parser.add_argument('--num_layers', type=int, default=800,
+                    help='num of layers in the network')
+
+# GReg method related (default setting is for ImageNet):
+parser.add_argument('--lr_prune', type=float, default=0.001)
+parser.add_argument('--update_reg_interval', type=int, default=5)
+parser.add_argument('--stabilize_reg_interval', type=int, default=40000)
+parser.add_argument('--reg_upper_limit', type=float, default=1.0)
+parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
 
 args = parser.parse_args()
 template.set_template(args)
@@ -179,3 +201,18 @@ for arg in vars(args):
     elif vars(args)[arg] == 'False':
         vars(args)[arg] = False
 
+
+# parse for layer-wise prune ratio
+# stage_pr is a list of float, skip_layers is a list of strings
+if args.stage_pr:
+    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
+    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
+else:
+    assert args.base_pr_model, 'If stage_pr is not provided, base_pr_model must be provided'
+
+# directly appoint some values to maintain compatibility
+args.pick_pruned = 'min'
+args.base_pr_model = None
+args.reinit = False
+args.resume_path = ''
+args.arch = 'resnet400'

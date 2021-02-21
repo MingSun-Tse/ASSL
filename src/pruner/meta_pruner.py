@@ -5,75 +5,21 @@ import time
 import numpy as np
 from math import ceil, sqrt
 from collections import OrderedDict
-from utils import strdict_to_dict
-
-class Layer:
-    def __init__(self, name, size, layer_index, res=False, layer_type=None):
-        self.name = name
-        self.size = []
-        for x in size:
-            self.size.append(x)
-        self.layer_index = layer_index
-        self.layer_type = layer_type
-        self.is_shortcut = True if "downsample" in name else False
-        if res:
-            self.stage, self.seq_index, self.block_index = self._get_various_index_by_name(name)
-    
-    def _get_various_index_by_name(self, name):
-        '''Get the indeces including stage, seq_ix, blk_ix.
-            Same stage means the same feature map size.
-        '''
-        global lastest_stage # an awkward impel, just for now
-        if name.startswith('module.'):
-            name = name[7:] # remove the prefix caused by pytorch data parallel
-
-        if "conv1" == name: # TODO: this might not be so safe
-            lastest_stage = 0
-            return 0, None, None
-        if "linear" in name or 'fc' in name: # Note: this can be risky. Check it fully. TODO: @mingsun-tse
-            return lastest_stage + 1, None, None # fc layer should always be the last layer
-        else:
-            try:
-                stage  = int(name.split(".")[0][-1]) # ONLY work for standard resnets. name example: layer2.2.conv1, layer4.0.downsample.0
-                seq_ix = int(name.split(".")[1])
-                if 'conv' in name.split(".")[-1]:
-                    blk_ix = int(name[-1]) - 1
-                else:
-                    blk_ix = -1 # shortcut layer  
-                lastest_stage = stage
-                return stage, seq_ix, blk_ix
-            except:
-                print('!Parsing the layer name failed: %s. Please check.' % name)
+from utils import strdict_to_dict, Layer_SR as Layer
+from fnmatch import fnmatch, fnmatchcase
                 
 class MetaPruner:
     def __init__(self, model, args, logger, passer):
         self.model = model
         self.args = args
-        self.logger = logger
-        self.logprint = logger.log_printer.logprint
-        self.accprint = logger.log_printer.accprint
-        self.netprint = logger.log_printer.netprint
-        self.test = lambda net: passer.test(passer.test_loader, net, passer.criterion, passer.args)
-        self.train_loader = passer.train_loader
-        self.criterion = passer.criterion
-        self.save = passer.save
-        self.is_single_branch = passer.is_single_branch
+        if logger:
+            self.logger = logger
+            self.logprint = logger.log_printer.logprint
+            self.netprint = logger.log_printer.netprint
         self.learnable_layers = (nn.Conv2d, nn.Linear) # Note: for now, we only focus on weights in Conv and FC modules, no BN.
         
         self.layers = OrderedDict()
         self._register_layers()
-
-        arch = self.args.arch
-        if arch.startswith('resnet'):
-            # TODO: add block
-            self.n_conv_within_block = 0
-            if args.dataset == "imagenet":
-                if arch in ['resnet18', 'resnet34']:
-                    self.n_conv_within_block = 2
-                elif arch in ['resnet50', 'resnet101', 'resnet152']:
-                    self.n_conv_within_block = 3
-            else:
-                self.n_conv_within_block = 2
 
         self.kept_wg = {}
         self.pruned_wg = {}
@@ -103,14 +49,16 @@ class MetaPruner:
         layer_shape = {}
         for name, m in self.model.named_modules():
             if isinstance(m, self.learnable_layers):
+                print(name, m)
+        
+        for name, m in self.model.named_modules():
+            if isinstance(m, self.learnable_layers):
                 if "downsample" not in name:
                     ix += 1
                 layer_shape[name] = [ix, m.weight.size()]
                 self._max_len_name = max(self._max_len_name, len(name))
-                
                 size = m.weight.size()
-                res = True if self.args.arch.startswith('resnet') else False
-                self.layers[name] = Layer(name, size, ix, res, layer_type=m.__class__.__name__)
+                self.layers[name] = Layer(name, size, ix, res=True, layer_type=m.__class__.__name__)
         
         self._max_len_ix = len("%s" % ix)
         print("Register layer index and kernel shape:")
@@ -189,59 +137,31 @@ class MetaPruner:
                     n_filter[ix] = m.weight.size(0)
         return n_filter
     
-    def _get_layer_pr_vgg(self, name):
+    def skip_layer(self, layer_name, skip_layer_patterns):
+        '''
+            'fnmatch' is used to match <layer_name> with pattern <p>. Example: <layer_name>: model.body.2.body.0, <p>: *body.2* -> return True
+        '''
+        for p in skip_layer_patterns:
+            if fnmatch(layer_name, p):
+                return True
+        return False
+
+    def _get_layer_pr(self, name):
         '''Example: '[0-4:0.5, 5:0.6, 8-10:0.2]'
                     6, 7 not mentioned, default value is 0
         '''
         layer_index = self.layers[name].layer_index
         pr = self.args.stage_pr[layer_index]
-        if str(layer_index) in self.args.skip_layers:
+        if self.skip_layer(name, self.args.skip_layers):
             pr = 0
-        return pr
-
-    def _get_layer_pr_resnet(self, name):
-        '''
-            This function will determine the prune_ratio (pr) for each specific layer
-            by a set of rules.
-        '''
-        wg = self.args.wg
-        layer_index = self.layers[name].layer_index
-        stage = self.layers[name].stage
-        seq_index = self.layers[name].seq_index
-        block_index = self.layers[name].block_index
-        is_shortcut = self.layers[name].is_shortcut
-        pr = self.args.stage_pr[stage]
-
-        # for unstructured pruning, no restrictions, every layer can be pruned
-        if self.args.wg != 'weight':
-            # do not prune the shortcut layers for now
-            if is_shortcut:
-                pr = 0
-            
-            # do not prune layers we set to be skipped
-            layer_id = '%s.%s.%s' % (str(stage), str(seq_index), str(block_index))
-            for s in self.args.skip_layers:
-                if s and layer_id.startswith(s):
-                    pr = 0
-
-            # for channel/filter prune, do not prune the 1st/last conv in a block
-            if (wg == "channel" and block_index == 0) or \
-                (wg == "filter" and block_index == self.n_conv_within_block - 1):
-                pr = 0
-        
         return pr
     
     def get_pr(self):
-        if self.is_single_branch(self.args.arch):
-            get_layer_pr = self._get_layer_pr_vgg
-        else:
-            get_layer_pr = self._get_layer_pr_resnet
-
         self.pr = {}
         if self.args.stage_pr: # stage_pr may be None (in the case that base_pr_model is provided)
             for name, m in self.model.named_modules():
                 if isinstance(m, self.learnable_layers):
-                    self.pr[name] = get_layer_pr(name)
+                    self.pr[name] = self._get_layer_pr(name)
         else:
             assert self.args.base_pr_model
             state = torch.load(self.args.base_pr_model)
@@ -255,35 +175,30 @@ class MetaPruner:
 
     def _get_kept_wg_L1(self):
         '''Decide kept (or pruned) weight group by L1-norm sorting.
-        '''
-        if self.args.base_pr_model and self.args.inherit_pruned == 'index':
-            self.pruned_wg = self.pruned_wg_pr_model
-            self.kept_wg = self.kept_wg_pr_model
-            self.logprint("==> Inherit the pruned index from base_pr_model: '{}'".format(self.args.base_pr_model))
-        else:    
-            wg = self.args.wg
-            for name, m in self.model.named_modules():
-                if isinstance(m, self.learnable_layers):
-                    shape = m.weight.data.shape
-                    if wg == "filter":
-                        score = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
-                    elif wg == "channel":
-                        score = m.weight.abs().mean(dim=[0, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=0)
-                    elif wg == "weight":
-                        score = m.weight.abs().flatten()
-                    else:
-                        raise NotImplementedError
-                    self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
-                    self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
-                    format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
-                    logtmp = format_str % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
-                    
-                    # compare the pruned weights picked by L1-sorting vs. other criterion which provides the base_pr_model (e.g., OBD)
-                    if self.args.base_pr_model:
-                        intersection = [x for x in self.pruned_wg_pr_model[name] if x in self.pruned_wg[name]]
-                        intersection_ratio = len(intersection) / len(self.pruned_wg[name]) if len(self.pruned_wg[name]) else 0
-                        logtmp += ', intersection ratio of the weights picked by L1 vs. base_pr_model: %.4f (%d)' % (intersection_ratio, len(intersection))
-                    self.netprint(logtmp)
+        ''' 
+        wg = self.args.wg
+        for name, m in self.model.named_modules():
+            if isinstance(m, self.learnable_layers):
+                shape = m.weight.data.shape
+                if wg == "filter":
+                    score = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
+                elif wg == "channel":
+                    score = m.weight.abs().mean(dim=[0, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=0)
+                elif wg == "weight":
+                    score = m.weight.abs().flatten()
+                else:
+                    raise NotImplementedError
+                self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
+                self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
+                format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
+                logtmp = format_str % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
+                
+                # compare the pruned weights picked by L1-sorting vs. other criterion which provides the base_pr_model (e.g., OBD)
+                if self.args.base_pr_model:
+                    intersection = [x for x in self.pruned_wg_pr_model[name] if x in self.pruned_wg[name]]
+                    intersection_ratio = len(intersection) / len(self.pruned_wg[name]) if len(self.pruned_wg[name]) else 0
+                    logtmp += ', intersection ratio of the weights picked by L1 vs. base_pr_model: %.4f (%d)' % (intersection_ratio, len(intersection))
+                self.netprint(logtmp)
 
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
@@ -297,22 +212,12 @@ class MetaPruner:
         elif self.args.wg == "filter":
             kept_filter = self.kept_wg[name]
             prev_learnable_layer = self._prev_learnable_layer(self.model, name, m)
-            if not prev_learnable_layer:
+            if (not prev_learnable_layer) or self.pr[prev_learnable_layer] == 0: 
+                # In the case of SR networks, tail, there is an upsampling via sub-pixel. 'self.pr[prev_learnable_layer] == 0' can help avoid it. 
+                # Not using this, the code will report error.
                 kept_chl = range(m.weight.size(1))
             else:
-                if self.layers[name].layer_type == self.layers[prev_learnable_layer].layer_type:
-                    kept_chl = self.kept_wg[prev_learnable_layer]
-                
-                else: # current layer is the 1st fc, the previous layer is the last conv
-                    last_conv_n_filter = self.layers[prev_learnable_layer].size[0]
-                    last_conv_fm_size = int(m.weight.size(1) / last_conv_n_filter) # feature map spatial size. 36 for alexnet
-                    self.logprint('last_conv_feature_map_size: %dx%d (before fed into the first fc)' % (sqrt(last_conv_fm_size), sqrt(last_conv_fm_size)))
-                    last_conv_kept_filter = self.kept_wg[prev_learnable_layer]
-                    kept_chl = []
-                    for i in last_conv_kept_filter:
-                        tmp = list(range(i * last_conv_fm_size, i * last_conv_fm_size + last_conv_fm_size))
-                        kept_chl += tmp
-        
+                kept_chl = self.kept_wg[prev_learnable_layer]
         return kept_filter, kept_chl
 
     def _prune_and_build_new_model(self):
@@ -334,7 +239,9 @@ class MetaPruner:
                 elif isinstance(m, nn.Linear):
                     kept_weights = m.weight.data[kept_filter][:, kept_chl]
                     new_layer = nn.Linear(in_features=len(kept_chl), out_features=len(kept_filter), bias=bias).cuda()
+                
                 new_layer.weight.data.copy_(kept_weights) # load weights into the new module
+                
                 if bias:
                     kept_bias = m.bias.data[kept_filter]
                     new_layer.bias.data.copy_(kept_bias)

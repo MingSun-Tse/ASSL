@@ -44,8 +44,8 @@ def exact_isometry_based_on_existing_weights(model, print=print):
             print('Finished exact_isometry for layer "%s"' % name)
 
 class Pruner(MetaPruner):
-    def __init__(self, model, args, logger, runner):
-        super(Pruner, self).__init__(model, args, logger, runner)
+    def __init__(self, model, args, logger, passer):
+        super(Pruner, self).__init__(model, args, logger, passer)
 
     def prune(self):
         self._get_kept_wg_L1()
