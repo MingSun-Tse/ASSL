@@ -68,7 +68,11 @@ class Model(nn.Module):
             )
 
         for s in save_dirs:
-            torch.save(self.model.state_dict(), s)
+            to_save = {
+                'state_dict': self.model.state_dict(),
+                'arch': self.model,
+            }
+            torch.save(to_save, s)
 
     def load(self, apath, pre_train='', resume=-1, cpu=False):
         load_from = None
