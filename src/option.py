@@ -153,7 +153,7 @@ parser.add_argument('--save_gt', action='store_true',
 parser.add_argument('--project_name', type=str, default="")
 # parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
-parser.add_argument('--print_interval', type=int, default=20)
+parser.add_argument('--print_interval', type=int, default=100)
 parser.add_argument('--test_interval', type=int, default=100)
 
 # Lightweight SR
@@ -177,7 +177,7 @@ parser.add_argument('--skip_layers', type=str, default="",
                     help='layers to skip when pruning')
 parser.add_argument('--same_pruned_wg_layers', type=str, default='',
                     help='layers to be set with the same pruned weight group')
-parser.add_argument('--num_layers', type=int, default=800,
+parser.add_argument('--num_layers', type=int, default=1000,
                     help='num of layers in the network')
 parser.add_argument('--resume_path', type=str, default='',
                     help='path of the checkpoint to resume')
