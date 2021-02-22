@@ -166,12 +166,6 @@ class MetaPruner:
                 
                 format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
                 logtmp = format_str % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
-                
-                # compare the pruned weights picked by L1-sorting vs. other criterion which provides the base_pr_model (e.g., OBD)
-                if self.args.base_pr_model:
-                    intersection = [x for x in self.pruned_wg_pr_model[name] if x in self.pruned_wg[name]]
-                    intersection_ratio = len(intersection) / len(self.pruned_wg[name]) if len(self.pruned_wg[name]) else 0
-                    logtmp += ', intersection ratio of the weights picked by L1 vs. base_pr_model: %.4f (%d)' % (intersection_ratio, len(intersection))
                 self.netprint(logtmp)
 
     def _get_kept_filter_channel(self, m, name):

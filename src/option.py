@@ -208,15 +208,12 @@ for arg in vars(args):
 
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
-if args.stage_pr:
+if args.method in ['L1', 'GReg-1']:
+    assert args.stage_pr
     args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
     args.skip_layers = strlist_to_list(args.skip_layers, str)
     args.same_pruned_wg_layers = strlist_to_list(args.same_pruned_wg_layers, str)
-else:
-    assert args.base_pr_model, 'If stage_pr is not provided, base_pr_model must be provided'
 
 # directly appoint some values to maintain compatibility
-args.base_pr_model = None
 args.reinit = False
-args.arch = 'resnet400'
-args.project = args.save
+args.project_name = args.save

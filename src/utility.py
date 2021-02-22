@@ -71,6 +71,7 @@ class checkpoint():
 
         open_type = 'a' if os.path.exists(self.get_path('log.txt'))else 'w'
         self.log_file = open(self.get_path('log.txt'), open_type)
+        self.log_file_prune = open(self.get_path('log_prune.txt'), open_type) # @mst: use another log file specifically for pruning logs
         with open(self.get_path('config.txt'), open_type) as f:
             f.write(now + '\n\n')
             for arg in vars(args):
@@ -85,12 +86,10 @@ class checkpoint():
     def save(self, trainer, epoch, is_best=False):
         trainer.model.save(self.get_path('model'), epoch, is_best=is_best)
         trainer.loss.save(self.dir)
-        print('%d: %s' % (epoch, trainer.loss.log), file=self.log_file, flush=True)
         trainer.loss.plot_loss(self.dir, epoch)
 
         self.plot_psnr(epoch)
         trainer.optimizer.save(self.dir)
-        print('%d: %s' % (epoch, self.log), file=self.log_file, flush=True)
         torch.save(self.log, self.get_path('psnr_log.pt'))
 
     def add_log(self, log):
@@ -102,6 +101,14 @@ class checkpoint():
         if refresh:
             self.log_file.close()
             self.log_file = open(self.get_path('log.txt'), 'a')
+
+    # @mst: use another log file specifically for pruning logs
+    def write_log_prune(self, log, refresh=False):
+        print(log)
+        self.log_file_prune.write(log + '\n')
+        if refresh:
+            self.log_file_prune.close()
+            self.log_file_prune = open(self.get_path('log_prune.txt'), 'a')
 
     def done(self):
         self.log_file.close()

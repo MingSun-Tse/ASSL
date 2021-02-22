@@ -18,8 +18,8 @@ class Pruner(MetaPruner):
         loader = passer.loader
         ckp = passer.ckp
         loss = passer.loss
-        self.logprint = ckp.write_log
-        self.netprint = ckp.write_log
+        self.logprint = ckp.write_log_prune # use another log file specifically for pruning logs
+        self.netprint = ckp.write_log_prune
 
         # ************************** variables from RCAN ************************** 
         self.scale = args.scale

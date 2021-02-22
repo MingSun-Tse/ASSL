@@ -105,7 +105,11 @@ class Model(nn.Module):
             )
 
         if load_from:
-            self.model.load_state_dict(load_from, strict=False)
+            if 'state_dict' in load_from: # @mst: for pruned models, load the pruned model arch as 'self.model'
+                self.model = load_from['arch']
+                self.model.load_state_dict(load_from['state_dict'], strict=False)
+            else:
+                self.model.load_state_dict(load_from, strict=False)
 
     # shave = 10, min_size=160000
     def forward_chop(self, x, shave=10, min_size=160000):
