@@ -13,6 +13,7 @@ checkpoint = utility.checkpoint(args)
 
 # @mst: set up project dir
 from logger import Logger
+from utils import get_n_flops_, get_n_params_
 logger = Logger(args)
 
 # @mst: select different trainers corresponding to different methods
@@ -67,8 +68,24 @@ def main():
                 passer.loss = loss.Loss(args, checkpoint) if not args.test_only else None
                 passer.loader = loader
                 pruner = pruner_dict[args.method].Pruner(_model, args, logger=logger, passer=passer)
-                _model = pruner.prune() # get the pruned model as initialization for later finetuning
 
+                # get the statistics of unpruned model
+                n_params_original_v2 = get_n_params_(_model)
+                n_flops_original_v2 = get_n_flops_(_model, img_size=args.patch_size, n_channel=3)
+
+                _model = pruner.prune() # get the pruned model as initialization for later finetuning
+                
+                # get the statistics of pruned model and print
+                n_params_now_v2 = get_n_params_(_model)
+                n_flops_now_v2 = get_n_flops_(_model, img_size=args.patch_size, n_channel=3)
+                checkpoint.write_log_prune("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
+                checkpoint.write_log_prune("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2/1e6, n_flops_now_v2/1e9))
+                ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
+                ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
+                compression_ratio = 1.0 / (1 - ratio_param)
+                speedup_ratio = 1.0 / (1 - ratio_flops)
+                checkpoint.write_log_prune("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
+                
             _loss = loss.Loss(args, checkpoint) if not args.test_only else None
             t = Trainer(args, loader, _model, _loss, checkpoint)
             while not t.terminate():

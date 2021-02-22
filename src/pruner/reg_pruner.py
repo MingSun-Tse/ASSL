@@ -5,7 +5,6 @@ import torch.nn.utils as utils
 from decimal import Decimal
 import os, copy, time, pickle, numpy as np, math
 from .meta_pruner import MetaPruner
-from utils import plot_weights_heatmap, get_n_flops_, get_n_params_
 import utility
 import matplotlib.pyplot as plt
 from tqdm import tqdm
@@ -200,10 +199,6 @@ class Pruner(MetaPruner):
         self.save(state, is_best=False, mark=mark)
 
     def prune(self):
-        # get the statistics of unpruned model
-        n_params_original_v2 = get_n_params_(self.model)
-        n_flops_original_v2 = get_n_flops_(self.model, img_size=self.args.patch_size, n_channel=3)
-        
         self.total_iter = 0
         if self.args.resume_path:
             self._resume_prune_status(self.args.resume_path)
@@ -216,18 +211,6 @@ class Pruner(MetaPruner):
             finish_prune = self.train() # there will be a break condition to get out of the infinite loop
             self.test()
             if finish_prune:
-                
-                # get the statistics of pruned model and print
-                n_params_now_v2 = get_n_params_(self.model)
-                n_flops_now_v2 = get_n_flops_(self.model, img_size=self.args.patch_size, n_channel=3)
-                self.logprint("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
-                self.logprint("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2/1e6, n_flops_now_v2/1e9))
-                ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
-                ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
-                compression_ratio = 1.0 / (1 - ratio_param)
-                speedup_ratio = 1.0 / (1 - ratio_flops)
-                self.logprint("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
-                
                 return copy.deepcopy(self.model)
 
 # ************************************************ The code below refers to RCAN ************************************************ #
