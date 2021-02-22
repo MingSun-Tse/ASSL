@@ -154,7 +154,6 @@ parser.add_argument('--project_name', type=str, default="")
 # parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
 parser.add_argument('--print_interval', type=int, default=100)
-parser.add_argument('--test_interval', type=int, default=100)
 
 # Lightweight SR
 parser.add_argument('--method', type=str, default='', choices=['', 'KD', 'L1', 'GReg-1'],
@@ -220,3 +219,4 @@ else:
 args.base_pr_model = None
 args.reinit = False
 args.arch = 'resnet400'
+args.project = args.save

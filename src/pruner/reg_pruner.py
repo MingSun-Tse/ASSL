@@ -214,6 +214,7 @@ class Pruner(MetaPruner):
         
         while True:
             finish_prune = self.train() # there will be a break condition to get out of the infinite loop
+            self.test()
             if finish_prune:
                 
                 # get the statistics of pruned model and print
@@ -290,9 +291,7 @@ class Pruner(MetaPruner):
                 self.logprint("'stabilize_reg' is done. Pruned, go to 'finetune'. Iter = %d" % self.total_iter)
                 return True
             # ---
-
-            if self.total_iter % self.args.test_interval == 0:
-                self.test()
+                
 
         self.loss.end_log(len(self.loader_train))
         self.error_last = self.loss.log[-1, -1]

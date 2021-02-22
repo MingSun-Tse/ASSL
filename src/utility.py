@@ -85,10 +85,12 @@ class checkpoint():
     def save(self, trainer, epoch, is_best=False):
         trainer.model.save(self.get_path('model'), epoch, is_best=is_best)
         trainer.loss.save(self.dir)
+        print('%d: %s' % (epoch, trainer.loss.log), file=self.log_file, flush=True)
         trainer.loss.plot_loss(self.dir, epoch)
 
         self.plot_psnr(epoch)
         trainer.optimizer.save(self.dir)
+        print('%d: %s' % (epoch, self.log), file=self.log_file, flush=True)
         torch.save(self.log, self.get_path('psnr_log.pt'))
 
     def add_log(self, log):
