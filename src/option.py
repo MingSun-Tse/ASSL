@@ -174,9 +174,13 @@ parser.add_argument('--wg', type=str, default='filter', choices=['filter', 'weig
 parser.add_argument('--stage_pr', type=str, default="", 
                     help='to appoint layer-wise pruning ratio')
 parser.add_argument('--skip_layers', type=str, default="", 
-                    help='layer id to skip when pruning')
+                    help='layers to skip when pruning')
+parser.add_argument('--same_pruned_wg_layers', type=str, default='',
+                    help='layers to be set with the same pruned weight group')
 parser.add_argument('--num_layers', type=int, default=800,
                     help='num of layers in the network')
+parser.add_argument('--resume_path', type=str, default='',
+                    help='path of the checkpoint to resume')
 
 # GReg method related (default setting is for ImageNet):
 parser.add_argument('--lr_prune', type=float, default=0.001)
@@ -184,6 +188,7 @@ parser.add_argument('--update_reg_interval', type=int, default=5)
 parser.add_argument('--stabilize_reg_interval', type=int, default=40000)
 parser.add_argument('--reg_upper_limit', type=float, default=1.0)
 parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
+parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'])
 
 args = parser.parse_args()
 template.set_template(args)
@@ -205,14 +210,13 @@ for arg in vars(args):
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
 if args.stage_pr:
-    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers) # example: [0-4:0.5, 5:0.6, 8-10:0.2]
-    args.skip_layers = strlist_to_list(args.skip_layers, str) # example: [0, 2, 6]
+    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
+    args.skip_layers = strlist_to_list(args.skip_layers, str)
+    args.same_pruned_wg_layers = strlist_to_list(args.same_pruned_wg_layers, str)
 else:
     assert args.base_pr_model, 'If stage_pr is not provided, base_pr_model must be provided'
 
 # directly appoint some values to maintain compatibility
-args.pick_pruned = 'min'
 args.base_pr_model = None
 args.reinit = False
-args.resume_path = ''
 args.arch = 'resnet400'

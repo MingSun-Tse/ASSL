@@ -5,8 +5,9 @@ import time
 import numpy as np
 from math import ceil, sqrt
 from collections import OrderedDict
-from utils import strdict_to_dict, Layer_SR as Layer
+from utils import strdict_to_dict
 from fnmatch import fnmatch, fnmatchcase
+from layer import Layers
                 
 class MetaPruner:
     def __init__(self, model, args, logger, passer):
@@ -16,11 +17,15 @@ class MetaPruner:
             self.logger = logger
             self.logprint = logger.log_printer.logprint
             self.netprint = logger.log_printer.netprint
-        self.learnable_layers = (nn.Conv2d, nn.Linear) # Note: for now, we only focus on weights in Conv and FC modules, no BN.
         
-        self.layers = OrderedDict()
-        self._register_layers()
+        # set up layers
+        layers = Layers(model)
+        self.layers = layers.layers
+        self.learnable_layers = layers.learnable_layers
+        self._max_len_ix = layers._max_len_ix
+        self._max_len_name = layers._max_len_name
 
+        # pruning related
         self.kept_wg = {}
         self.pruned_wg = {}
         self.get_pr() # set up pr for each layer
@@ -38,33 +43,6 @@ class MetaPruner:
         elif mode == "max":
             out = w_abs_list.sort()[1][-n_pruned:]
         return out
-
-    def _register_layers(self):
-        '''
-            This will maintain a data structure that can return some useful 
-            information by the name of a layer.
-        '''
-        ix = -1 # layer index, starts from 0
-        self._max_len_name = 0
-        layer_shape = {}
-        for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
-                print(name, m)
-        
-        for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
-                if "downsample" not in name:
-                    ix += 1
-                layer_shape[name] = [ix, m.weight.size()]
-                self._max_len_name = max(self._max_len_name, len(name))
-                size = m.weight.size()
-                self.layers[name] = Layer(name, size, ix, res=True, layer_type=m.__class__.__name__)
-        
-        self._max_len_ix = len("%s" % ix)
-        print("Register layer index and kernel shape:")
-        format_str = "[%{}d] %{}s -- kernel_shape: %s".format(self._max_len_ix, self._max_len_name)
-        for name, (ix, ks) in layer_shape.items():
-            print(format_str % (ix, name, ks))
 
     def _next_learnable_layer(self, model, name, mm):
         '''get the next conv or fc layer name
@@ -137,23 +115,17 @@ class MetaPruner:
                     n_filter[ix] = m.weight.size(0)
         return n_filter
     
-    def skip_layer(self, layer_name, skip_layer_patterns):
-        '''
-            'fnmatch' is used to match <layer_name> with pattern <p>. Example: <layer_name>: model.body.2.body.0, <p>: *body.2* -> return True
-        '''
-        for p in skip_layer_patterns:
-            if fnmatch(layer_name, p):
-                return True
-        return False
-
     def _get_layer_pr(self, name):
         '''Example: '[0-4:0.5, 5:0.6, 8-10:0.2]'
                     6, 7 not mentioned, default value is 0
         '''
         layer_index = self.layers[name].layer_index
         pr = self.args.stage_pr[layer_index]
-        if self.skip_layer(name, self.args.skip_layers):
-            pr = 0
+
+        # if layer name matchs the pattern pre-specified in 'args.skip_layers', skip it (i.e., pr = 0)
+        for p in self.args.skip_layers:
+            if fnmatch(name, p):
+                pr = 0
         return pr
     
     def get_pr(self):
@@ -188,8 +160,10 @@ class MetaPruner:
                     score = m.weight.abs().flatten()
                 else:
                     raise NotImplementedError
+                
                 self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
                 self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
+                
                 format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
                 logtmp = format_str % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
                 
@@ -273,12 +247,15 @@ class MetaPruner:
                 self._replace_module(new_model, name, new_bn)
 
         self.model = new_model
-        n_filter = self._get_n_filter(self.model)
-        logtmp = '{'
-        for ix, num in n_filter.items():
-            logtmp += '%s:%d, ' % (ix, num)
-        logtmp = logtmp[:-2] + '}'
-        self.logprint('n_filter of pruned model: %s' % logtmp)
+
+        # print the layer shape of pruned model
+        Layers(new_model)
+        # n_filter = self._get_n_filter(self.model)
+        # logtmp = '{'
+        # for ix, num in n_filter.items():
+        #     logtmp += '%s:%d, ' % (ix, num)
+        # logtmp = logtmp[:-2] + '}'
+        # self.logprint('n_filter of pruned model: %s' % logtmp)
     
     def _get_masks(self):
         '''Get masks for unstructured pruning

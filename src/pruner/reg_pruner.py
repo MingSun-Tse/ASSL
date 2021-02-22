@@ -5,10 +5,11 @@ import torch.nn.utils as utils
 from decimal import Decimal
 import os, copy, time, pickle, numpy as np, math
 from .meta_pruner import MetaPruner
-from utils import plot_weights_heatmap
+from utils import plot_weights_heatmap, get_n_flops_, get_n_params_
 import utility
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+from fnmatch import fnmatch, fnmatchcase
 pjoin = os.path.join
 
 class Pruner(MetaPruner):
@@ -39,61 +40,31 @@ class Pruner(MetaPruner):
         # Reg related variables
         self.reg = {}
         self.delta_reg = {}
-        self.hist_mag_ratio = {}
-        self.n_update_reg = {}
+        self._init_reg()
         self.iter_update_reg_finished = {}
         self.iter_finish_pick = {}
         self.iter_stabilize_reg = math.inf
-        self.original_w_mag = {}
-        self.original_kept_w_mag = {}
-        self.ranking = {}
-        self.pruned_wg_L1 = {}
+        self.hist_mag_ratio = {}
         self.w_abs = {}
         
         # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
-        if self.args.method in ['GReg-1', 'GReg-2']:
+        if self.args.method in ['GReg-1']:
             self._get_kept_wg_L1()
-        for k, v in self.pruned_wg.items():
-            self.pruned_wg_L1[k] = v
+            if self.args.same_pruned_wg_layers:
+                self._set_same_pruned_wg()
 
+        # init prune_state
         self.prune_state = "update_reg"
-        for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
-                shape = m.weight.data.shape
 
-                # initialize reg
+    def _init_reg(self):
+        for name, m in self.model.named_modules():
+            if isinstance(m, self.learnable_layers):
                 if self.args.wg == 'weight':
                     self.reg[name] = torch.zeros_like(m.weight.data).flatten().cuda()
                 else:
-                    self.reg[name] = torch.zeros(shape[0], shape[1]).cuda() 
-                
-    def _pick_pruned_wg(self, w, pr):
-        if pr == 0:
-            return []
-        elif pr > 0:
-            w = w.flatten()
-            n_pruned = min(math.ceil(pr * w.size(0)), w.size(0) - 1) # do not prune all
-            return w.sort()[1][:n_pruned]
-        elif pr == -1: # automatically decide lr by each layer itself
-            tmp = w.flatten().sort()[0]
-            n_not_consider = int(len(tmp) * 0.02)
-            w = tmp[n_not_consider:-n_not_consider]
-
-            sorted_w, sorted_index = w.flatten().sort()
-            max_gap = 0
-            max_index = 0
-            for i in range(len(sorted_w) - 1):
-                # gap = sorted_w[i+1:].mean() - sorted_w[:i+1].mean()
-                gap = sorted_w[i+1] - sorted_w[i]
-                if gap > max_gap:
-                    max_gap = gap
-                    max_index = i
-            max_index += n_not_consider
-            return sorted_index[:max_index + 1]
-        else:
-            self.logprint("Wrong pr. Please check.")
-            exit(1)
+                    shape = m.weight.data.shape
+                    self.reg[name] = torch.zeros(shape[0], shape[1]).cuda()
 
     def _get_score(self, m):
         shape = m.weight.data.shape
@@ -104,21 +75,6 @@ class Pruner(MetaPruner):
         elif self.args.wg == "weight":
             w_abs = m.weight.abs().flatten()
         return w_abs
-
-    def _fix_reg(self, m, name):
-        if self.pr[name] == 0:
-            return True
-
-        pruned = self.pruned_wg[name]
-        if self.args.wg == "channel":
-            self.reg[name][:, pruned] = self.args.reg_upper_limit
-        elif self.args.wg == "filter":
-            self.reg[name][pruned, :] = self.args.reg_upper_limit
-        elif self.args.wg == 'weight':
-            self.reg[name][pruned] = self.args.reg_upper_limit
-
-        finish_update_reg = self.total_iter > self.args.fix_reg_interval
-        return finish_update_reg
 
     def _greg_1(self, m, name):
         if self.pr[name] == 0:
@@ -136,10 +92,26 @@ class Pruner(MetaPruner):
 
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
-        
+    
+    def _set_same_pruned_wg(self):
+        '''Set pruned_wg of some layers to the same indeces. Useful in pruning the last layer in a residual block.
+        '''
+        index = 0
+        for name, m in self.model.named_modules():
+            if isinstance(m, self.learnable_layers) and self.pr[name] > 0:
+                for p in self.args.same_pruned_wg_layers:
+                    if fnmatch(name, p):
+                        if isinstance(index, int):
+                            n_wg = len(self._get_score(m))
+                            n_pruned = min(math.ceil(self.pr[name] * n_wg), n_wg - 1) # do not prune all
+                            index = np.random.permutation(n_wg)[:n_pruned]
+                        self.pruned_wg[name] = index
+                        self.logprint('==> Set same pruned_wg for "%s"' % name) 
+                        break
+    
     def _update_reg(self):
         for name, m in self.model.named_modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.Linear):
+            if isinstance(m, self.learnable_layers):
                 cnt_m = self.layers[name].layer_index
                 pr = self.pr[name]
                 
@@ -228,6 +200,10 @@ class Pruner(MetaPruner):
         self.save(state, is_best=False, mark=mark)
 
     def prune(self):
+        # get the statistics of unpruned model
+        n_params_original_v2 = get_n_params_(self.model)
+        n_flops_original_v2 = get_n_flops_(self.model, img_size=self.args.patch_size, n_channel=3)
+        
         self.total_iter = 0
         if self.args.resume_path:
             self._resume_prune_status(self.args.resume_path)
@@ -239,6 +215,18 @@ class Pruner(MetaPruner):
         while True:
             finish_prune = self.train() # there will be a break condition to get out of the infinite loop
             if finish_prune:
+                
+                # get the statistics of pruned model and print
+                n_params_now_v2 = get_n_params_(self.model)
+                n_flops_now_v2 = get_n_flops_(self.model, img_size=self.args.patch_size, n_channel=3)
+                self.logprint("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
+                self.logprint("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2/1e6, n_flops_now_v2/1e9))
+                ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
+                ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
+                compression_ratio = 1.0 / (1 - ratio_param)
+                speedup_ratio = 1.0 / (1 - ratio_flops)
+                self.logprint("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
+                
                 return copy.deepcopy(self.model)
 
 # ************************************************ The code below refers to RCAN ************************************************ #
