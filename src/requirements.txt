@@ -1,8 +1,12 @@
-imageio==2.9.0
-tqdm==4.47.0
 torch==1.2.0
-numpy==1.18.5
 matplotlib==3.2.2
-scikit_image==0.16.2
+tqdm==4.47.0
+numpy==1.18.5
+imageio==2.9.0
 torchvision==0.4.0a0+6b959ee
+pandas==1.0.5
+scipy==1.5.0
+scikit_image==0.16.2
+Pillow==8.1.0
+PyYAML==5.4.1
 skimage==0.0
