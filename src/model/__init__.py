@@ -34,7 +34,9 @@ class Model(nn.Module):
                 resume=args.resume,
                 cpu=args.cpu
             )
-            print(self.model, file=ckp.log_file)
+            ckp.write_log('load pretrained weights successfully: "%s"' % ckp.get_path('model'))
+            print(self.model, file=ckp.log_file, flush=True)
+
 
     def forward(self, x, idx_scale):
         self.idx_scale = idx_scale

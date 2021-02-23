@@ -51,8 +51,6 @@ class checkpoint():
         if not args.load:
             if not args.save:
                 args.save = now
-            else:
-                args.save = '%s_%s' % (args.save, now)
             self.dir = os.path.join('..', 'experiment', args.save)
         else:
             self.dir = os.path.join('..', 'experiment', args.load)
@@ -71,7 +69,7 @@ class checkpoint():
         for d in args.data_test:
             os.makedirs(self.get_path('results-{}'.format(d)), exist_ok=True)
 
-        open_type = 'a' if os.path.exists(self.get_path('log.txt'))else 'w'
+        open_type = 'a' if os.path.exists(self.get_path('log.txt')) else 'w'
         self.log_file = open(self.get_path('log.txt'), open_type)
         self.log_file_prune = open(self.get_path('log_prune.txt'), open_type) # @mst: use another log file specifically for pruning logs
         with open(self.get_path('config.txt'), open_type) as f:

@@ -87,9 +87,10 @@ def main():
                 checkpoint.write_log_prune("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
                 
                 # reset checkpoint and loss
+                args.save = args.save + "_FT"
                 checkpoint = utility.checkpoint(args)
-                _loss = loss.Loss(args, checkpoint) if not args.test_only else None
-            
+                
+            _loss = loss.Loss(args, checkpoint) if not args.test_only else None
             t = Trainer(args, loader, _model, _loss, checkpoint)
             while not t.terminate():
                 t.train()
