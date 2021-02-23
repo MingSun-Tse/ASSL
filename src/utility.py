@@ -51,6 +51,8 @@ class checkpoint():
         if not args.load:
             if not args.save:
                 args.save = now
+            else:
+                args.save = '%s_%s' % (args.save, now)
             self.dir = os.path.join('..', 'experiment', args.save)
         else:
             self.dir = os.path.join('..', 'experiment', args.load)
