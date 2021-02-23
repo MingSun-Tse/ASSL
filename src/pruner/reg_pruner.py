@@ -209,9 +209,9 @@ class Pruner(MetaPruner):
         
         while True:
             finish_prune = self.train() # there will be a break condition to get out of the infinite loop
-            self.test()
             if finish_prune:
                 return copy.deepcopy(self.model)
+            self.test()
 
 # ************************************************ The code below refers to RCAN ************************************************ #
     def train(self):
@@ -248,8 +248,7 @@ class Pruner(MetaPruner):
             # --- @mst: update reg factors and apply them before optimizer updates
             if self.total_iter % self.args.print_interval == 0:
                 self.logprint("")
-                self.logprint("Iter = %d [prune_state = %s, method = %s] " 
-                    % (self.total_iter, self.prune_state, self.args.method) + "-"*40)
+                self.logprint("Iter = %d [prune_state = %s, method = %s] " % (self.total_iter, self.prune_state, self.args.method) + "-"*40)
             if self.prune_state == "update_reg" and self.total_iter % self.args.update_reg_interval == 0:
                 self._update_reg()
             self._apply_reg()
@@ -266,20 +265,18 @@ class Pruner(MetaPruner):
                     timer_model.release(),
                     timer_data.release()))
 
-            timer_data.tic()
+            timer_data.tic()  
 
-            # --- @mst: exit of reg pruning loop
-            if self.prune_state == "stabilize_reg" and self.total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
+            # @mst: exit of reg pruning loop
+            if self.prune_state == "stabilize_reg" and self.total_iter - self.iter_stabilize_reg >= self.args.stabilize_reg_interval:
                 self._prune_and_build_new_model()
                 self.logprint("'stabilize_reg' is done. Pruned, go to 'finetune'. Iter = %d" % self.total_iter)
-                return True
-            # ---
-                
+                return True              
 
         self.loss.end_log(len(self.loader_train))
         self.error_last = self.loss.log[-1, -1]
         self.optimizer.schedule()
-    
+
     def test(self):
         torch.set_grad_enabled(False)
 

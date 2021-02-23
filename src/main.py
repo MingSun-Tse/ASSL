@@ -44,7 +44,7 @@ def set_up_teacher(args, checkpoint, T_model, T_weights, T_n_resblocks, T_n_feat
     return model
     
 def main():
-    global model
+    global model, checkpoint
     if args.data_test == ['video']:
         from videotester import VideoTester
         model = model.Model(args, checkpoint)
@@ -86,7 +86,10 @@ def main():
                 speedup_ratio = 1.0 / (1 - ratio_flops)
                 checkpoint.write_log_prune("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
                 
-            _loss = loss.Loss(args, checkpoint) if not args.test_only else None
+                # reset checkpoint and loss
+                checkpoint = utility.checkpoint(args)
+                _loss = loss.Loss(args, checkpoint) if not args.test_only else None
+            
             t = Trainer(args, loader, _model, _loss, checkpoint)
             while not t.terminate():
                 t.train()
