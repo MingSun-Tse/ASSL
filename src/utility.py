@@ -1,4 +1,4 @@
-import os
+import os, sys
 import math
 import time
 import datetime
@@ -77,12 +77,22 @@ class checkpoint():
             for arg in vars(args):
                 f.write('{}: {}\n'.format(arg, getattr(args, arg)))
             f.write('\n')
+        self.print_script()
 
         self.n_processes = 8
 
     def get_path(self, *subdir):
         return os.path.join(self.dir, *subdir)
 
+    def print_script(self):
+        if 'CUDA_VISIBLE_DEVICES' in os.environ:
+            gpu_id = os.environ['CUDA_VISIBLE_DEVICES']
+            script = ' '.join(['CUDA_VISIBLE_DEVICES=%s python' % gpu_id, *sys.argv])
+        else:
+            script = ' '.join(['python', *sys.argv])
+        print(script, file=self.get_path('config.txt'), flush=True)
+        print(script, file=sys.stdout, flush=True)
+        
     def save(self, trainer, epoch, is_best=False):
         trainer.model.save(self.get_path('model'), epoch, is_best=is_best)
         trainer.loss.save(self.dir)
