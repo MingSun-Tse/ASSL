@@ -6,15 +6,10 @@ import data
 import model
 import loss
 from option import args
+from utils import get_n_flops_, get_n_params_
 
 torch.manual_seed(args.seed)
 checkpoint = utility.checkpoint(args)
-
-
-# @mst: set up project dir
-from logger import Logger
-from utils import get_n_flops_, get_n_params_
-logger = Logger(args)
 
 # @mst: select different trainers corresponding to different methods
 if args.method in ['']:
@@ -67,7 +62,7 @@ def main():
                 passer.ckp = checkpoint
                 passer.loss = loss.Loss(args, checkpoint) if not args.test_only else None
                 passer.loader = loader
-                pruner = pruner_dict[args.method].Pruner(_model, args, logger=logger, passer=passer)
+                pruner = pruner_dict[args.method].Pruner(_model, args, logger=None, passer=passer)
 
                 # get the statistics of unpruned model
                 n_params_original_v2 = get_n_params_(_model)

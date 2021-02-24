@@ -215,6 +215,8 @@ class Pruner(MetaPruner):
         while True:
             finish_prune = self.train() # there will be a break condition to get out of the infinite loop
             if finish_prune:
+                
+
                 return copy.deepcopy(self.model)
             self.test()
 
@@ -256,7 +258,8 @@ class Pruner(MetaPruner):
                 self.logprint("Iter = %d [prune_state = %s, method = %s] " % (self.total_iter, self.prune_state, self.args.method) + "-"*40)
             if self.prune_state == "update_reg" and self.total_iter % self.args.update_reg_interval == 0:
                 self._update_reg()
-            self._apply_reg()
+            if self.args.apply_reg: # reg can also be not applied, as a baseline for comparison
+                self._apply_reg()
             # ---
 
             self.optimizer.step()

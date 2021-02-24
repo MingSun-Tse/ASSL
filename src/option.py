@@ -182,12 +182,12 @@ parser.add_argument('--resume_path', type=str, default='',
                     help='path of the checkpoint to resume')
 
 # GReg method related (default setting is for ImageNet):
-parser.add_argument('--lr_prune', type=float, default=0.001)
 parser.add_argument('--update_reg_interval', type=int, default=5)
 parser.add_argument('--stabilize_reg_interval', type=int, default=40000)
 parser.add_argument('--reg_upper_limit', type=float, default=1.0)
 parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
 parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'])
+parser.add_argument('--not_apply_reg', dest='apply_reg', action='store_false', default=True)
 
 args = parser.parse_args()
 template.set_template(args)
