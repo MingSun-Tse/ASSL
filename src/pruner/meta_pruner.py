@@ -40,8 +40,10 @@ class MetaPruner:
             out = np.random.permutation(n_wg)[:n_pruned]
         elif mode == "min":
             out = w_abs_list.sort()[1][:n_pruned]
+            out = out.data.cpu().numpy()
         elif mode == "max":
             out = w_abs_list.sort()[1][-n_pruned:]
+            out = out.data.cpu().numpy()
         return out
 
     def _next_learnable_layer(self, model, name, mm):

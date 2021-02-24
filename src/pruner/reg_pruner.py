@@ -105,6 +105,7 @@ class Pruner(MetaPruner):
                             n_pruned = min(math.ceil(self.pr[name] * n_wg), n_wg - 1) # do not prune all
                             index = np.random.permutation(n_wg)[:n_pruned]
                         self.pruned_wg[name] = index
+                        self.kept_wg[name] = [x for x in range(n_wg) if x not in index]
                         self.logprint('==> Set same pruned_wg for "%s"' % name) 
                         break
     
@@ -154,6 +155,10 @@ class Pruner(MetaPruner):
                 if self.total_iter % self.args.print_interval == 0:
                     self.logprint("    reg_status: min = %.5f ave = %.5f max = %.5f" % 
                                 (self.reg[name].min(), self.reg[name].mean(), self.reg[name].max()))
+                    w_abs = self.w_abs[name].data.cpu().numpy()
+                    avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
+                    avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
+                    self.logprint("    average weight magnitude: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept))
 
     def _apply_reg(self):
         for name, m in self.model.named_modules():
