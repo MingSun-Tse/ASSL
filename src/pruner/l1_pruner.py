@@ -46,6 +46,9 @@ def exact_isometry_based_on_existing_weights(model, print=print):
 class Pruner(MetaPruner):
     def __init__(self, model, args, logger, passer):
         super(Pruner, self).__init__(model, args, logger, passer)
+        ckp = passer.ckp
+        self.logprint = ckp.write_log_prune # use another log file specifically for pruning logs
+        self.netprint = ckp.write_log_prune
 
     def prune(self):
         self._get_kept_wg_L1()

@@ -13,10 +13,9 @@ class MetaPruner:
     def __init__(self, model, args, logger, passer):
         self.model = model
         self.args = args
-        if logger:
-            self.logger = logger
-            self.logprint = logger.log_printer.logprint
-            self.netprint = logger.log_printer.netprint
+        self.logger = logger
+        self.logprint = logger.log_printer.logprint if logger else print
+        self.netprint = logger.log_printer.netprint if logger else print
         
         # set up layers
         layers = Layers(model)
