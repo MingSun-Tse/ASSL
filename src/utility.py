@@ -90,8 +90,9 @@ class checkpoint():
             script = ' '.join(['CUDA_VISIBLE_DEVICES=%s python' % gpu_id, *sys.argv])
         else:
             script = ' '.join(['python', *sys.argv])
-        print(script, file=self.get_path('config.txt'), flush=True)
-        print(script, file=sys.stdout, flush=True)
+        with open(self.get_path('config.txt'), 'a+') as f:
+            print(script, file=f, flush=True)
+            print(script, file=sys.stdout, flush=True)
         
     def save(self, trainer, epoch, is_best=False):
         trainer.model.save(self.get_path('model'), epoch, is_best=is_best)
