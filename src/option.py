@@ -1,7 +1,6 @@
 import argparse
 import template
-from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg, merge_args
-from logger import Logger
+from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg
 
 parser = argparse.ArgumentParser(description='EDSR and MDSR')
 
