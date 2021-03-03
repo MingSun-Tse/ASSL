@@ -163,3 +163,4 @@ class RIRSR(nn.Module):
             missing = set(own_state.keys()) - set(state_dict.keys())
             if len(missing) > 0:
                 raise KeyError('missing keys in state_dict: "{}"'.format(missing))
+
