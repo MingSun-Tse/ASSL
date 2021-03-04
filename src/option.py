@@ -173,6 +173,8 @@ parser.add_argument('--stage_pr', type=str, default="",
                     help='to appoint layer-wise pruning ratio')
 parser.add_argument('--skip_layers', type=str, default="", 
                     help='layers to skip when pruning')
+parser.add_argument('--reinit_layers', type=str, default="", 
+                    help='layers to reinit (not inherit weights)')
 parser.add_argument('--same_pruned_wg_layers', type=str, default='',
                     help='layers to be set with the same pruned weight group')
 parser.add_argument('--num_layers', type=int, default=1000,
@@ -187,6 +189,7 @@ parser.add_argument('--reg_upper_limit', type=float, default=1.0)
 parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
 parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'])
 parser.add_argument('--not_apply_reg', dest='apply_reg', action='store_false', default=True)
+parser.add_argument('--layer_chl', type=str, default='', help='manually assign the number of channels for some layers. A not so beautiful scheme.')
 
 args = parser.parse_args()
 template.set_template(args)
@@ -211,7 +214,9 @@ if args.method in ['L1', 'GReg-1']:
     assert args.stage_pr
     args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
     args.skip_layers = strlist_to_list(args.skip_layers, str)
+    args.reinit_layers = strlist_to_list(args.reinit_layers, str)
     args.same_pruned_wg_layers = strlist_to_list(args.same_pruned_wg_layers, str)
+    args.layer_chl = strdict_to_dict(args.layer_chl, int)
 
 # directly appoint some values to maintain compatibility
 args.reinit = False

@@ -7,6 +7,7 @@ import model
 import loss
 from option import args
 from utils import get_n_flops_, get_n_params_
+from torchsummaryX import summary
 
 torch.manual_seed(args.seed)
 checkpoint = utility.checkpoint(args)
@@ -71,15 +72,21 @@ def main():
                 _model = pruner.prune() # get the pruned model as initialization for later finetuning
                 
                 # get the statistics of pruned model and print
-                n_params_now_v2 = get_n_params_(_model)
-                n_flops_now_v2 = get_n_flops_(_model, img_size=args.patch_size, n_channel=3)
-                checkpoint.write_log_prune("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
-                checkpoint.write_log_prune("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2/1e6, n_flops_now_v2/1e9))
-                ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
-                ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
-                compression_ratio = 1.0 / (1 - ratio_param)
-                speedup_ratio = 1.0 / (1 - ratio_flops)
-                checkpoint.write_log_prune("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
+                height_lr = 1280 // args.scale[0]
+                width_lr  = 720  // args.scale[0]
+                dummy_input = torch.zeros((1, 3, height_lr, width_lr)).cuda()
+                summary(_model, dummy_input, {'idx_scale': args.scale[0]})
+
+                # @mst: old code for printing FLOPs etc. Deprecated now. Will be removed.
+                # n_params_now_v2 = get_n_params_(_model)
+                # n_flops_now_v2 = get_n_flops_(_model, img_size=args.patch_size, n_channel=3)
+                # checkpoint.write_log_prune("==> n_params_original_v2: {:>7.4f}M, n_flops_original_v2: {:>7.4f}G".format(n_params_original_v2/1e6, n_flops_original_v2/1e9))
+                # checkpoint.write_log_prune("==> n_params_now_v2:      {:>7.4f}M, n_flops_now_v2:      {:>7.4f}G".format(n_params_now_v2/1e6, n_flops_now_v2/1e9))
+                # ratio_param = (n_params_original_v2 - n_params_now_v2) / n_params_original_v2
+                # ratio_flops = (n_flops_original_v2 - n_flops_now_v2) / n_flops_original_v2
+                # compression_ratio = 1.0 / (1 - ratio_param)
+                # speedup_ratio = 1.0 / (1 - ratio_flops)
+                # checkpoint.write_log_prune("==> reduction ratio -- params: {:>5.2f}% (compression {:>.2f}x), flops: {:>5.2f}% (speedup {:>.2f}x)".format(ratio_param*100, compression_ratio, ratio_flops*100, speedup_ratio))
                 
                 # reset checkpoint and loss
                 args.save = args.save + "_FT"

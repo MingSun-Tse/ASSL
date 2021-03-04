@@ -199,17 +199,30 @@ class MetaPruner:
             if isinstance(m, self.learnable_layers):
                 kept_filter, kept_chl = self._get_kept_filter_channel(m, name)
                 
+                # decide if renit the current layer
+                reinit = False
+                for rl in self.args.reinit_layers:
+                    if fnmatch(name, rl):
+                        reinit = True
+                        break
+                
+                # get number of channels (can be manually assigned)
+                num_chl = self.args.layer_chl[name] if name in self.args.layer_chl else len(kept_chl)
+
                 # copy weight and bias
                 bias = False if isinstance(m.bias, type(None)) else True
                 if isinstance(m, nn.Conv2d):
-                    kept_weights = m.weight.data[kept_filter][:, kept_chl, :, :]
-                    new_layer = nn.Conv2d(kept_weights.size(1), kept_weights.size(0), m.kernel_size,
+                    new_layer = nn.Conv2d(num_chl, len(kept_filter), m.kernel_size,
                                     m.stride, m.padding, m.dilation, m.groups, bias).cuda()
+                    if not reinit:
+                        kept_weights = m.weight.data[kept_filter][:, kept_chl, :, :]
+
                 elif isinstance(m, nn.Linear):
                     kept_weights = m.weight.data[kept_filter][:, kept_chl]
                     new_layer = nn.Linear(in_features=len(kept_chl), out_features=len(kept_filter), bias=bias).cuda()
                 
-                new_layer.weight.data.copy_(kept_weights) # load weights into the new module
+                if not reinit:
+                    new_layer.weight.data.copy_(kept_weights) # load weights into the new module
                 
                 if bias:
                     kept_bias = m.bias.data[kept_filter]
