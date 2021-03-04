@@ -86,3 +86,37 @@ class Upsampler(nn.Sequential):
 
         super(Upsampler, self).__init__(*m)
 
+
+
+
+class LiteUpsampler(nn.Sequential):
+    def __init__(self, conv, scale, n_feats, n_out=3, bn=False, act=False, bias=True):
+
+        m = []
+        m.append(conv(n_feats, n_out*(scale ** 2), 3, bias))
+        m.append(nn.PixelShuffle(scale))
+        # if (scale & (scale - 1)) == 0:    # Is scale = 2^n?
+        #     for _ in range(int(math.log(scale, 2))):
+        #         m.append(conv(n_feats, 4 * n_out, 3, bias))
+        #         m.append(nn.PixelShuffle(2))
+        #         if bn:
+        #             m.append(nn.BatchNorm2d(n_out))
+        #         if act == 'relu':
+        #             m.append(nn.ReLU(True))
+        #         elif act == 'prelu':
+        #             m.append(nn.PReLU(n_out))
+
+        # elif scale == 3:
+        #     m.append(conv(n_feats, 9 * n_out, 3, bias))
+        #     m.append(nn.PixelShuffle(3))
+        #     if bn:
+        #         m.append(nn.BatchNorm2d(n_out))
+        #     if act == 'relu':
+        #         m.append(nn.ReLU(True))
+        #     elif act == 'prelu':
+        #         m.append(nn.PReLU(n_out))
+        # else:
+        #     raise NotImplementedError
+
+        super(LiteUpsampler, self).__init__(*m)
+
