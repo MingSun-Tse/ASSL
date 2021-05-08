@@ -4,8 +4,47 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+class Conv2D_WN(nn.Conv2d):
+    '''Conv2D with weight normalization.
+    '''
+    def __init__(self, 
+        in_channels,
+        out_channels,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        bias=True,
+        padding_mode='zeros',  # TODO: refine this type
+        device=None,
+        dtype=None
+    ):
+        super(Conv2D_WN, self).__init__(in_channels, out_channels, kernel_size, 
+            stride=stride, padding=padding, dilation=dilation, groups=groups, 
+            bias=bias, padding_mode=padding_mode)
+        
+        # set up the scale variable in weight normalization
+        self.scale = nn.Parameter(torch.ones(out_channels), requires_grad=True)
+        for i in range(self.weight.size(0)):
+            self.scale.data[i] = torch.norm(self.weight.data[i])
+
+    def forward(self, input):
+        w = F.normalize(self.weight, dim=(1,2,3))
+        # print(w.shape)
+        # print(torch.norm(w[0]))
+        # print(self.scale)
+        w = w * self.scale.view(-1,1,1,1)
+        return F.conv2d(input, w, self.bias, self.stride,
+                        self.padding, self.dilation, self.groups)
+
 def default_conv(in_channels, out_channels, kernel_size, bias=True):
     return nn.Conv2d(
+        in_channels, out_channels, kernel_size,
+        padding=(kernel_size//2), bias=bias)
+
+def wn_conv(in_channels, out_channels, kernel_size, bias=True):
+    return Conv2D_WN(
         in_channels, out_channels, kernel_size,
         padding=(kernel_size//2), bias=bias)
 

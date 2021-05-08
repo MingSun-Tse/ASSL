@@ -17,7 +17,7 @@ if args.method in ['']:
     from trainer import Trainer
 elif args.method in ['KD']:
     from trainer_kd import TrainerKD as Trainer
-elif args.method in ['L1', 'GReg-1']:
+elif args.method in ['L1', 'GReg-1', 'ASSL']:
     from trainer import Trainer
     from pruner import pruner_dict
 
@@ -57,7 +57,7 @@ def main():
                 _model_S = model.Model(args, checkpoint)
                 _model_T = set_up_teacher(args, checkpoint, args.T_model, args.T_weights, args.T_n_resblocks, args.T_n_feats)
                 _model = [_model_T, _model_S]
-            elif args.method in ['L1', 'GReg-1']:
+            elif args.method in ['L1', 'GReg-1', 'ASSL']:
                 _model = model.Model(args, checkpoint)
                 class passer: pass
                 passer.ckp = checkpoint

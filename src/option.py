@@ -155,7 +155,7 @@ parser.add_argument('--screen_print', action="store_true")
 parser.add_argument('--print_interval', type=int, default=100)
 
 # Lightweight SR
-parser.add_argument('--method', type=str, default='', choices=['', 'KD', 'L1', 'GReg-1'],
+parser.add_argument('--method', type=str, default='', choices=['', 'KD', 'L1', 'GReg-1', 'ASSL'],
                     help='method name')
 parser.add_argument('--T_model', type=str, 
                     help='teacher model name')
@@ -191,6 +191,9 @@ parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'm
 parser.add_argument('--not_apply_reg', dest='apply_reg', action='store_false', default=True)
 parser.add_argument('--layer_chl', type=str, default='', help='manually assign the number of channels for some layers. A not so beautiful scheme.')
 
+# WN+Reg
+parser.add_argument('--wn', action='store_true', help='if use weight normalization')
+
 args = parser.parse_args()
 template.set_template(args)
 
@@ -210,7 +213,7 @@ for arg in vars(args):
 
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
-if args.method in ['L1', 'GReg-1']:
+if args.method in ['L1', 'GReg-1', 'ASSL']:
     assert args.stage_pr
     args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
     args.skip_layers = strlist_to_list(args.skip_layers, str)
