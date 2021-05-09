@@ -288,7 +288,7 @@ class Pruner(MetaPruner):
         torch.set_grad_enabled(False)
 
         epoch = self.optimizer.get_last_epoch()
-        self.ckp.write_log('\nEvaluation:')
+        self.ckp.write_log('Evaluation:')
         self.ckp.add_log(
             torch.zeros(1, len(self.loader_test), len(self.scale))
         )
@@ -316,8 +316,7 @@ class Pruner(MetaPruner):
 
                 self.ckp.log[-1, idx_data, idx_scale] /= len(d)
                 best = self.ckp.log.max(0)
-                self.ckp.write_log(
-                    '[{} x{}]\tPSNR: {:.3f} (Best: {:.3f} @epoch {}) [prune_state = {}, method = {}]'.format(
+                logstr = '[{} x{}]\tPSNR: {:.3f} (Best: {:.3f} @epoch {}) [prune_state = {}, method = {}]'.format(
                         d.dataset.name,
                         scale,
                         self.ckp.log[-1, idx_data, idx_scale],
@@ -326,16 +325,17 @@ class Pruner(MetaPruner):
                         self.prune_state, 
                         self.args.method
                     )
-                )
+                self.ckp.write_log(logstr)
+                self.logprint(logstr)
 
-        self.ckp.write_log('Forward: {:.2f}s\n'.format(timer_test.toc()))
+        self.ckp.write_log('Forward: {:.2f}s'.format(timer_test.toc()))
         self.ckp.write_log('Saving...')
 
         if self.args.save_results:
             self.ckp.end_background()
 
-        if not self.args.test_only:
-            self.ckp.save(self, epoch, is_best=(best[1][0, 0] + 1 == epoch))
+        # if not self.args.test_only:
+        #     self.ckp.save(self, epoch, is_best=(best[1][0, 0] + 1 == epoch))
 
         self.ckp.write_log(
             'Total: {:.2f}s\n'.format(timer_test.toc()), refresh=True
