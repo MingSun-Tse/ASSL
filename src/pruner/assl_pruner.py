@@ -90,7 +90,7 @@ class Pruner(MetaPruner):
             w_abs = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
         elif self.args.wg == "weight":
             w_abs = m.weight.abs().flatten()
-        wn_scale = m.scale.abs()
+        wn_scale = m.wn_scale.abs() if hasattr(m, 'wn_scale') else [None] * shape[0]
         return w_abs, wn_scale
 
     def _set_same_pruned_wg(self):
@@ -115,59 +115,65 @@ class Pruner(MetaPruner):
             if isinstance(m, self.learnable_layers):
                 cnt_m = self.layers[name].layer_index
                 pr = self.pr[name]
-                if pr > 0:
+                if name in self.iter_update_reg_finished.keys():
+                    continue
+
+                if self.total_iter % self.args.print_interval == 0:
+                    self.logprint("[%d] Update reg for layer '%s'. Pr = %s. Iter = %d" 
+                        % (cnt_m, name, pr, self.total_iter))
                 
-                    if name in self.iter_update_reg_finished.keys():
-                        continue
+                # get the importance score (L1-norm in this case)
+                self.w_abs[name], self.wn_scale[name] = self._get_score(m)
+                
+                # update reg functions, two things: 
+                # (1) update reg of this layer (2) determine if it is time to stop update reg
+                finish_update_reg = self._greg_1(m, name)
 
-                    if self.total_iter % self.args.print_interval == 0:
-                        self.logprint("[%d] Update reg for layer '%s'. Pr = %s. Iter = %d" 
-                            % (cnt_m, name, pr, self.total_iter))
+                # check prune state
+                if finish_update_reg:
+                    # after 'update_reg' stage, keep the reg to stabilize weight magnitude
+                    self.iter_update_reg_finished[name] = self.total_iter
+                    self.logprint("==> [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
+
+                    # check if all layers finish 'update_reg'
+                    self.prune_state = "stabilize_reg"
+                    for n, mm in self.model.named_modules():
+                        if isinstance(mm, nn.Conv2d) or isinstance(mm, nn.Linear):
+                            if n not in self.iter_update_reg_finished:
+                                self.prune_state = "update_reg"
+                                break
+                    if self.prune_state == "stabilize_reg":
+                        self.iter_stabilize_reg = self.total_iter
+                        self.logprint("==> All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
+                        # self._save_model(mark='just_finished_update_reg')
                     
-                    # get the importance score (L1-norm in this case)
-                    self.w_abs[name], self.wn_scale[name] = self._get_score(m)
-                    
-                    # update reg functions, two things: 
-                    # (1) update reg of this layer (2) determine if it is time to stop update reg
-                    finish_update_reg = self._greg_1(m, name)
-
-                    # check prune state
-                    if finish_update_reg:
-                        # after 'update_reg' stage, keep the reg to stabilize weight magnitude
-                        self.iter_update_reg_finished[name] = self.total_iter
-                        self.logprint("==> [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
-
-                        # check if all layers finish 'update_reg'
-                        self.prune_state = "stabilize_reg"
-                        for n, mm in self.model.named_modules():
-                            if isinstance(mm, nn.Conv2d) or isinstance(mm, nn.Linear):
-                                if n not in self.iter_update_reg_finished:
-                                    self.prune_state = "update_reg"
-                                    break
-                        if self.prune_state == "stabilize_reg":
-                            self.iter_stabilize_reg = self.total_iter
-                            self.logprint("==> All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
-                            # self._save_model(mark='just_finished_update_reg')
-                        
-                    # after reg is updated, print to check
-                    if self.total_iter % self.args.print_interval == 0:
-                        self.logprint("    reg_status: min = %.5f ave = %.5f max = %.5f" % 
-                                    (self.reg[name].min(), self.reg[name].mean(), self.reg[name].max()))
-                        w_abs = self.w_abs[name].data.cpu().numpy()
-                        wn_scale = self.wn_scale[name].data.cpu().numpy()
-                        avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
-                        avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
-                        avg_scale_pruned = np.mean(wn_scale[self.pruned_wg[name]])
-                        avg_scale_kept   = np.mean(wn_scale[self.kept_wg[name]])
-                        self.logprint("    average weight magnitude: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept))
-                        self.logprint("    average weight scale:     pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept))
+                # after reg is updated, print to check
+                if self.total_iter % self.args.print_interval == 0:
+                    self.logprint("    reg_status: min = %.5f ave = %.5f max = %.5f" % 
+                                (self.reg[name].min(), self.reg[name].mean(), self.reg[name].max()))
+                    w_abs = self.w_abs[name].data.cpu().numpy()
+                    wn_scale = self.wn_scale[name].data.cpu().numpy()
+                    avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
+                    avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
+                    avg_scale_pruned = np.mean(wn_scale[self.pruned_wg[name]])
+                    avg_scale_kept   = np.mean(wn_scale[self.kept_wg[name]])
+                    self.logprint("    average weight magnitude: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept))
+                    self.logprint("    average weight scale:     pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept))
 
 
     def _apply_reg(self):
         for name, m in self.model.named_modules():
             if name in self.reg and self.pr[name] > 0:
                 reg = self.reg[name] # [N, C]
-                m.scale.grad += reg[:,0] * m.scale
+                m.wn_scale.grad += reg[:,0] * m.wn_scale
+
+    def _merge_wn_scale_to_weights(self):
+        '''Merge the learned weight normalization scale to the weights.
+        '''
+        for name, m in self.model.named_modules():
+            if isinstance(m, self.learnable_layers) and hasattr(m, 'wn_scale'):
+                m.weight.data *= m.wn_scale.view(-1, 1, 1, 1)
+                self.logprint(f'Merged weight normalization scale to weights: {name}')
 
     def _resume_prune_status(self, ckpt_path):
         raise NotImplementedError
@@ -261,8 +267,12 @@ class Pruner(MetaPruner):
 
             # @mst: exit of reg pruning loop
             if self.prune_state == "stabilize_reg" and self.total_iter - self.iter_stabilize_reg >= self.args.stabilize_reg_interval:
+                self.logprint(f"'stabilize_reg' is done. Iter {self.total_iter}. Testing...")
+                self.test()
+                self._merge_wn_scale_to_weights()
                 self._prune_and_build_new_model()
-                self.logprint("'stabilize_reg' is done. Pruned, go to 'finetune'. Iter = %d" % self.total_iter)
+                self.logprint(f"Pruned and built a new model, go to 'finetune'. Testing...")
+                self.test()
                 return True              
 
         self.loss.end_log(len(self.loader_train))
@@ -270,6 +280,7 @@ class Pruner(MetaPruner):
         self.optimizer.schedule()
 
     def test(self):
+        is_train = self.model.training
         torch.set_grad_enabled(False)
 
         epoch = self.optimizer.get_last_epoch()
@@ -327,6 +338,9 @@ class Pruner(MetaPruner):
         )
 
         torch.set_grad_enabled(True)
+
+        if is_train:
+            self.model.train()
 
     def prepare(self, *args):
         device = torch.device('cpu' if self.args.cpu else 'cuda')

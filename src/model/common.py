@@ -25,16 +25,16 @@ class Conv2D_WN(nn.Conv2d):
             bias=bias, padding_mode=padding_mode)
         
         # set up the scale variable in weight normalization
-        self.scale = nn.Parameter(torch.ones(out_channels), requires_grad=True)
+        self.wn_scale = nn.Parameter(torch.ones(out_channels), requires_grad=True)
         for i in range(self.weight.size(0)):
-            self.scale.data[i] = torch.norm(self.weight.data[i])
+            self.wn_scale.data[i] = torch.norm(self.weight.data[i])
 
     def forward(self, input):
         w = F.normalize(self.weight, dim=(1,2,3))
         # print(w.shape)
         # print(torch.norm(w[0]))
-        # print(self.scale)
-        w = w * self.scale.view(-1,1,1,1)
+        # print(self.wn_scale)
+        w = w * self.wn_scale.view(-1,1,1,1)
         return F.conv2d(input, w, self.bias, self.stride,
                         self.padding, self.dilation, self.groups)
 
