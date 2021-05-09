@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 import torch.nn.utils as utils
 from decimal import Decimal
@@ -165,14 +166,17 @@ class Pruner(MetaPruner):
         for name, m in self.model.named_modules():
             if name in self.reg and self.pr[name] > 0:
                 reg = self.reg[name] # [N, C]
-                m.wn_scale.grad += reg[:,0] * m.wn_scale
+                m.wn_scale.grad += reg[:, 0] * m.wn_scale
+                bias = False if isinstance(m.bias, type(None)) else True
+                if bias:
+                    m.bias.grad += reg[:, 0] * m.bias
 
     def _merge_wn_scale_to_weights(self):
         '''Merge the learned weight normalization scale to the weights.
         '''
         for name, m in self.model.named_modules():
             if isinstance(m, self.learnable_layers) and hasattr(m, 'wn_scale'):
-                m.weight.data *= m.wn_scale.view(-1, 1, 1, 1)
+                m.weight.data = F.normalize(m.weight.data, dim=(1,2,3)) * m.wn_scale.view(-1,1,1,1)
                 self.logprint(f'Merged weight normalization scale to weights: {name}')
 
     def _resume_prune_status(self, ckpt_path):
