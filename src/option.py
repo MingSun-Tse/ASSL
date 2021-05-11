@@ -177,6 +177,8 @@ parser.add_argument('--reinit_layers', type=str, default="",
                     help='layers to reinit (not inherit weights)')
 parser.add_argument('--same_pruned_wg_layers', type=str, default='',
                     help='layers to be set with the same pruned weight group')
+parser.add_argument('--same_pruned_wg_criterion', type=str, default='rand', choices=['rand', 'reg'],
+                    help='use which criterion to select pruned wg')
 parser.add_argument('--num_layers', type=int, default=1000,
                     help='num of layers in the network')
 parser.add_argument('--resume_path', type=str, default='',
@@ -193,6 +195,9 @@ parser.add_argument('--layer_chl', type=str, default='', help='manually assign t
 
 # WN+Reg
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')
+parser.add_argument('--lw_spr', type=float, default=1, help='lw for loss of sparsity pattern regularization')
+parser.add_argument('--iter_finish_spr', type=int, default=5000)
+
 
 args = parser.parse_args()
 template.set_template(args)

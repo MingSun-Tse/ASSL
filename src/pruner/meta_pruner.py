@@ -28,6 +28,7 @@ class MetaPruner:
         self.kept_wg = {}
         self.pruned_wg = {}
         self.get_pr() # set up pr for each layer
+        self._get_constrained_layers()
         
     def _pick_pruned(self, w_abs, pr, mode="min"):
         if pr == 0:
@@ -116,6 +117,18 @@ class MetaPruner:
                     n_filter[ix] = m.weight.size(0)
         return n_filter
     
+    def _get_constrained_layers(self):
+        self.constrained_layers = []
+        for name, m in self.model.named_modules():
+            if isinstance(m, self.learnable_layers) and self.pr[name] > 0:
+                match = False
+                for p in self.args.skip_layers:
+                    if fnmatch(name, p):
+                        match = True
+                        break
+                if match:
+                    self.constrained_layers.append(name)
+
     def _get_layer_pr(self, name):
         '''Example: '[0-4:0.5, 5:0.6, 8-10:0.2]'
                     6, 7 not mentioned, default value is 0
