@@ -31,6 +31,10 @@ class LEDSR(nn.Module):
         self.sub_mean = common.MeanShift(args.rgb_range)
         self.add_mean = common.MeanShift(args.rgb_range, sign=1)
 
+        # use conv with weight normalization
+        if args.wn:
+            conv = common.wn_conv
+            
         # define head module
         m_head = [conv(args.n_colors, n_feats, kernel_size)]
 
