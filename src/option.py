@@ -196,7 +196,7 @@ parser.add_argument('--layer_chl', type=str, default='', help='manually assign t
 # WN+Reg
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')
 parser.add_argument('--lw_spr', type=float, default=1, help='lw for loss of sparsity pattern regularization')
-parser.add_argument('--iter_finish_spr', type=int, default=5000)
+parser.add_argument('--iter_finish_spr', type=int, default=17260, help='863x20 = 20 epochs')
 
 
 args = parser.parse_args()

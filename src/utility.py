@@ -60,16 +60,16 @@ class checkpoint():
             else:
                 args.load = ''
 
-        # add a reminder
-        if os.path.exists(self.dir):
-            val = input('Warning: directory "%s" already exists, is there any potential problem with this? Type [yes/no] to continue: ' % self.dir)
-            if val.lower() == 'no':
-                val = input('Warning: Are you sure? We cannot be too careful. Type [yes/no] to continue: ')
-            if val.lower() == 'yes':
-                print("You've responded with 'yes'. This program is about to terminate. Please check and run again.")
-                exit(1)
-            else:
-                print("You are very positive that there is NO problem. The program continues running. Have a nice day!")
+        # # add a reminder
+        # if os.path.exists(self.dir):
+        #     val = input('Warning: directory "%s" already exists, is there any potential problem with this? Type [yes/no] to continue: ' % self.dir)
+        #     if val.lower() == 'no':
+        #         val = input('Warning: Are you sure? We cannot be too careful. Type [yes/no] to continue: ')
+        #     if val.lower() == 'yes':
+        #         print("You've responded with 'yes'. This program is about to terminate. Please check and run again.")
+        #         exit(1)
+        #     else:
+        #         print("You are very positive that there is NO problem. The program continues running. Have a nice day!")
 
         if args.reset:
             os.system('rm -rf ' + self.dir)
