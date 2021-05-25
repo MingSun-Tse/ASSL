@@ -49,7 +49,7 @@ ax2 = ax1.twinx()
 set_ax(ax1)
 set_ax(ax2)
 ax2.grid(None)
-ax1_color = 'blue'
+ax1_color = 'black'
 ax2_color = 'red'
 
 # set x ylabel
@@ -82,9 +82,9 @@ for i in range(len(lines)):
         wn_scale_kept += [wn_scale_kept_]
 
 step = [x/1000 for x in step]
-ax1.plot(step, wn_scale_pruned, color = 'blue', linestyle='dotted', label='Pruned filters')
-ax1.plot(step, wn_scale_kept, color = 'blue', linestyle='solid', label='Kept filters')
-ax2.plot(step, reg, color='red', linestyle='dashed')
+ax1.plot(step, wn_scale_pruned, color = ax1_color, linestyle='dotted', label='Pruned filters')
+ax1.plot(step, wn_scale_kept, color = ax1_color, linestyle='solid', label='Kept filters')
+ax2.plot(step, reg, color=ax2_color, linestyle='dashed')
 
 # set y1, y2 axis
 ax1.yaxis.label.set_color(ax1_color); ax1.tick_params(axis='y', colors=ax1_color)
