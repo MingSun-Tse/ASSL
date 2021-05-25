@@ -98,6 +98,6 @@ ax1.set_title(layer, fontsize=fs)
 # leg.legendHandles[1].set_color('k')
 
 # Save
-out = 'mag_reg_vs_step_%s.pdf' % layer
+out = 'wn_scale_reg_vs_step_%s.pdf' % layer
 fig.savefig(out, bbox_inches='tight')
 plt.close(fig)
