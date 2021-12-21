@@ -5,7 +5,6 @@ from torch.utils.data import Dataset
 import torch.nn.functional as F
 import torchvision
 from torch.autograd import Variable
-from torch.autograd.gradcheck import zero_gradients
 from pprint import pprint
 import time, math, os, sys, copy, numpy as np, shutil as sh
 import matplotlib.pyplot as plt
@@ -882,70 +881,6 @@ def visualize_feature_map(fm, layer_id, save_dir, n_channel_plot=16, pick_mode='
         save_path = '%s/featmap_visualization__%s__layer%s__channel%s' % (save_dir, prefix, layer_id, j)
         fig.savefig(save_path + ext, bbox_inches='tight')
         plt.close(fig)
-
-
-def add_noise_to_model(model, std=0.01):
-    model = copy.deepcopy(model) # do not modify the original model
-    for name, module in model.named_modules():
-        if isinstance(module, (nn.Conv2d, nn.Linear, nn.BatchNorm2d)): # all learnable params for a typical DNN
-            w = module.weight
-            w.data += torch.randn_like(w) * std
-    return model
-
-
-# Refer to: https://github.com/ast0414/adversarial-example/blob/26ee4144a1771d3a565285e0a631056a6f42d49c/craft.py#L6
-def compute_jacobian(inputs, output):
-	"""
-	:param inputs: Batch X Size (e.g. Depth X Width X Height)
-	:param output: Batch X Classes
-	:return: jacobian: Batch X Classes X Size
-	"""
-	assert inputs.requires_grad
-
-	num_classes = output.size()[1]
-
-	jacobian = torch.zeros(num_classes, *inputs.size())
-	grad_output = torch.zeros(*output.size())
-	if inputs.is_cuda:
-		grad_output = grad_output.cuda()
-		jacobian = jacobian.cuda()
-
-	for i in range(num_classes):
-		zero_gradients(inputs)
-		grad_output.zero_()
-		grad_output[:, i] = 1
-		output.backward(grad_output, retain_graph=True)
-		jacobian[i] = inputs.grad.data
-
-	return torch.transpose(jacobian, dim0=0, dim1=1)
-
-def get_jacobian_singular_values(model, data_loader, num_classes, n_loop=20, print_func=print):
-    jsv = []
-    for i, (images, target) in enumerate(data_loader):
-        if i < n_loop:
-            images, target = images.cuda(), target.cuda()
-            batch_size = images.size(0)
-            images.requires_grad = True # for Jacobian computation
-            output = model(images)
-            jacobian = compute_jacobian(images, output) # shape [batch_size, num_classes, num_channels, input_width, input_height]
-            jacobian = jacobian.view(batch_size, num_classes, -1)
-            u, s, v = torch.svd(jacobian)
-            jsv.append(s.data.cpu().numpy())
-            print_func('[%3d/%3d] calculating Jacobian...' % (i, len(data_loader)))
-    jsv = np.concatenate(jsv)
-    return jsv
-
-
-def approximate_entropy(X, num_bins=10, esp=1e-30):
-    '''X shape: [num_sample, n_var], numpy array.
-    '''
-    entropy = []
-    for di in range(X.shape[1]):
-        samples = X[:, di]
-        bins = np.linspace(samples.min(), samples.max(), num=num_bins+1)
-        prob = np.histogram(samples, bins=bins, density=False)[0] / len(samples)
-        entropy.append((-np.log2(prob + esp) * prob).sum()) # esp for numerical stability when prob = 0
-    return np.mean(entropy)
 
 # matplotlib utility functions
 def set_ax(ax):

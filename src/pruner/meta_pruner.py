@@ -7,7 +7,8 @@ from math import ceil, sqrt
 from collections import OrderedDict
 from utils import strdict_to_dict
 from fnmatch import fnmatch, fnmatchcase
-from layer import Layers
+from layer import LayerStruct
+from .utils import pick_pruned_model, get_constrained_layers
                 
 class MetaPruner:
     def __init__(self, model, args, logger, passer):
@@ -18,33 +19,18 @@ class MetaPruner:
         self.netprint = logger.log_printer.netprint if logger else print
         
         # set up layers
-        layers = Layers(model)
-        self.layers = layers.layers
-        self.learnable_layers = layers.learnable_layers
-        self._max_len_ix = layers._max_len_ix
-        self._max_len_name = layers._max_len_name
+        self.LEARNABLES = (nn.Conv2d, nn.Linear) # the layers we focus on for pruning
+        layer_struct = LayerStruct(model, self.LEARNABLES)
+        self.layers = layer_struct.layers
+        self._max_len_ix = layer_struct._max_len_ix
+        self._max_len_name = layer_struct._max_len_name
 
-        # pruning related
-        self.kept_wg = {}
-        self.pruned_wg = {}
-        self.get_pr() # set up pr for each layer
-        self._get_constrained_layers()
-        
-    def _pick_pruned(self, w_abs, pr, mode="min"):
-        if pr == 0:
-            return []
-        w_abs_list = w_abs.flatten()
-        n_wg = len(w_abs_list)
-        n_pruned = min(ceil(pr * n_wg), n_wg - 1) # do not prune all
-        if mode == "rand":
-            out = np.random.permutation(n_wg)[:n_pruned]
-        elif mode == "min":
-            out = w_abs_list.sort()[1][:n_pruned]
-            out = out.data.cpu().numpy()
-        elif mode == "max":
-            out = w_abs_list.sort()[1][-n_pruned:]
-            out = out.data.cpu().numpy()
-        return out
+        # set up pr for each layer
+        self.get_pr()
+
+        # pick pruned and kept weight groups
+        self.constrained_layers = get_constrained_layers(self.layers, self.args.same_pruned_wg_layers)
+        print(f'constrained: {self.constrained_layers}')
 
     def _next_learnable_layer(self, model, name, mm):
         '''get the next conv or fc layer name
@@ -117,24 +103,16 @@ class MetaPruner:
                     n_filter[ix] = m.weight.size(0)
         return n_filter
     
-    def _get_constrained_layers(self):
-        self.constrained_layers = []
-        for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers) and self.pr[name] > 0:
-                match = False
-                for p in self.args.skip_layers:
-                    if fnmatch(name, p):
-                        match = True
-                        break
-                if match:
-                    self.constrained_layers.append(name)
 
     def _get_layer_pr(self, name):
         '''Example: '[0-4:0.5, 5:0.6, 8-10:0.2]'
                     6, 7 not mentioned, default value is 0
         '''
-        layer_index = self.layers[name].layer_index
-        pr = self.args.stage_pr[layer_index]
+        if self.args.compare_mode in ['global']:
+            pr = 1e-20 # a positive value, will be replaced. Its current role is to indicate this layer will be considered for pruning
+        elif self.args.compare_mode in ['local']:
+            layer_index = self.layers[name].layer_index
+            pr = self.args.stage_pr[layer_index]
 
         # if layer name matchs the pattern pre-specified in 'args.skip_layers', skip it (i.e., pr = 0)
         for p in self.args.skip_layers:
@@ -143,10 +121,13 @@ class MetaPruner:
         return pr
     
     def get_pr(self):
+        """Get layer-wise pruning ratio for a model
+        """
         self.pr = {}
-        if self.args.stage_pr: # stage_pr may be None (in the case that base_pr_model is provided)
+        if self.args.stage_pr: # 'stage_pr' may be None (in the case that 'base_pr_model' is provided)
+            self.pr['model'] = self.args.stage_pr
             for name, m in self.model.named_modules():
-                if isinstance(m, self.learnable_layers):
+                if isinstance(m, self.LEARNABLES):
                     self.pr[name] = self._get_layer_pr(name)
         else:
             assert self.args.base_pr_model
@@ -161,26 +142,30 @@ class MetaPruner:
 
     def _get_kept_wg_L1(self):
         '''Decide kept (or pruned) weight group by L1-norm sorting.
-        ''' 
-        wg = self.args.wg
-        for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
-                shape = m.weight.data.shape
-                if wg == "filter":
-                    score = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
-                elif wg == "channel":
-                    score = m.weight.abs().mean(dim=[0, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=0)
-                elif wg == "weight":
-                    score = m.weight.abs().flatten()
-                else:
-                    raise NotImplementedError
-                
-                self.pruned_wg[name] = self._pick_pruned(score, self.pr[name], self.args.pick_pruned)
-                self.kept_wg[name] = [i for i in range(len(score)) if i not in self.pruned_wg[name]]
-                
-                format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
-                logtmp = format_str % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
-                self.netprint(logtmp)
+        '''
+        self.pruned_wg, self.kept_wg = pick_pruned_model(self.layers, self.pr, 
+                                                        wg=self.args.wg, 
+                                                        criterion=self.args.prune_criterion,
+                                                        compare_mode=self.args.compare_mode,
+                                                        sort_mode=self.args.pick_pruned)
+        
+        num_pruned_constrained = 0
+        for name, layer in self.layers.items():
+            self.pr[name] = len(self.pruned_wg[name]) / len(layer.score)
+            if name in self.constrained_layers:
+                num_pruned_constrained += len(self.pruned_wg[name])
+        
+        # adjust pruned/kept/pr for constrained conv layers
+        for name, layer in self.layers.items():
+            if name in self.constrained_layers:
+                num_pruned = int(num_pruned_constrained / len(self.constrained_layers))
+                self.pr[name] = num_pruned / len(layer.score)
+                order = self.pruned_wg[name] + self.kept_wg[name]
+                self.pruned_wg[name], self.kept_wg[name] = order[:num_pruned], order[num_pruned:]
+                print(f'{name} is a constrained layer. Adjust its pruned/kept indices.')
+            format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
+            logtmp = format_str % (self.layers[name].layer_index, name, self.args.pick_pruned, self.pr[name])
+            self.netprint(logtmp)
 
     def _get_kept_filter_channel(self, m, name):
         if self.args.wg == "channel":
@@ -209,7 +194,7 @@ class MetaPruner:
 
         new_model = copy.deepcopy(self.model)
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
+            if isinstance(m, self.LEARNABLES):
                 kept_filter, kept_chl = self._get_kept_filter_channel(m, name)
                 
                 # decide if renit the current layer
@@ -270,20 +255,14 @@ class MetaPruner:
         self.model = new_model
 
         # print the layer shape of pruned model
-        Layers(new_model)
-        # n_filter = self._get_n_filter(self.model)
-        # logtmp = '{'
-        # for ix, num in n_filter.items():
-        #     logtmp += '%s:%d, ' % (ix, num)
-        # logtmp = logtmp[:-2] + '}'
-        # self.logprint('n_filter of pruned model: %s' % logtmp)
+        LayerStruct(new_model, self.LEARNABLES)
     
     def _get_masks(self):
         '''Get masks for unstructured pruning
         '''
         self.mask = {}
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
+            if isinstance(m, self.LEARNABLES):
                 mask = torch.ones_like(m.weight.data).cuda().flatten()
                 pruned = self.pruned_wg[name]
                 mask[pruned] = 0

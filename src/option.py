@@ -192,12 +192,14 @@ parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
 parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'])
 parser.add_argument('--not_apply_reg', dest='apply_reg', action='store_false', default=True)
 parser.add_argument('--layer_chl', type=str, default='', help='manually assign the number of channels for some layers. A not so beautiful scheme.')
+parser.add_argument('--greg_mode', type=str, default='part', choices=['part', 'all'])
+parser.add_argument('--compare_mode', type=str, default='local', choices=['local', 'global'])
+parser.add_argument('--prune_criterion', type=str, default='l1-norm', choices=['l1-norm'])
 
 # WN+Reg
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')
 parser.add_argument('--lw_spr', type=float, default=1, help='lw for loss of sparsity pattern regularization')
 parser.add_argument('--iter_finish_spr', type=int, default=17260, help='863x20 = 20 epochs')
-
 
 args = parser.parse_args()
 template.set_template(args)
@@ -220,7 +222,10 @@ for arg in vars(args):
 # stage_pr is a list of float, skip_layers is a list of strings
 if args.method in ['L1', 'GReg-1', 'ASSL']:
     assert args.stage_pr
-    args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
+    if args.compare_mode in ['global']:
+        args.stage_pr = float(args.stage_pr)
+    elif args.compare_mode in ['local']:
+        args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
     args.skip_layers = strlist_to_list(args.skip_layers, str)
     args.reinit_layers = strlist_to_list(args.reinit_layers, str)
     args.same_pruned_wg_layers = strlist_to_list(args.same_pruned_wg_layers, str)

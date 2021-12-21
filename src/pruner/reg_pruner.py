@@ -92,6 +92,22 @@ class Pruner(MetaPruner):
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
     
+    def _greg_penaltize_all(self, m, name):
+        if self.pr[name] == 0:
+            return True
+        
+        if self.args.wg == "channel":
+            self.reg[name] += self.args.reg_granularity_prune
+        elif self.args.wg == "filter":
+            self.reg[name] += self.args.reg_granularity_prune
+        elif self.args.wg == 'weight':
+            self.reg[name] += self.args.reg_granularity_prune
+        else:
+            raise NotImplementedError
+
+        # when all layers are pushed hard enough, stop
+        return self.reg[name].max() > self.args.reg_upper_limit
+
     def _set_same_pruned_wg(self):
         '''Set pruned_wg of some layers to the same indeces. Useful in pruning the last layer in a residual block.
         '''
@@ -129,6 +145,8 @@ class Pruner(MetaPruner):
                 # (1) update reg of this layer (2) determine if it is time to stop update reg
                 if self.args.method == "GReg-1":
                     finish_update_reg = self._greg_1(m, name)
+                elif self.args.method == "GReg-PA":
+                    finish_update_reg = self._greg_penaltize_all(m, name)
                 else:
                     self.logprint("Wrong '--method' argument, please check.")
                     exit(1)

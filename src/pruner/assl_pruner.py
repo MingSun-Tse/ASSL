@@ -59,7 +59,7 @@ class Pruner(MetaPruner):
 
     def _init_reg(self):
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
+            if name in self.layers:
                 if self.args.wg == 'weight':
                     self.reg[name] = torch.zeros_like(m.weight.data).flatten().cuda()
                 else:
@@ -82,7 +82,23 @@ class Pruner(MetaPruner):
 
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
-    
+
+    def _greg_penaltize_all(self, m, name):
+        if self.pr[name] == 0:
+            return True
+        
+        if self.args.wg == "channel":
+            self.reg[name] += self.args.reg_granularity_prune
+        elif self.args.wg == "filter":
+            self.reg[name] += self.args.reg_granularity_prune
+        elif self.args.wg == 'weight':
+            self.reg[name] += self.args.reg_granularity_prune
+        else:
+            raise NotImplementedError
+
+        # when all layers are pushed hard enough, stop
+        return self.reg[name].max() > self.args.reg_upper_limit
+
     def _get_score(self, m):
         shape = m.weight.data.shape
         if self.args.wg == "channel":
@@ -100,7 +116,7 @@ class Pruner(MetaPruner):
         index = 0
         self.constrained_layers = []
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers) and self.pr[name] > 0:
+            if name in self.layers and self.pr[name] > 0:
                 for p in self.args.same_pruned_wg_layers:
                     if fnmatch(name, p):
                         self.constrained_layers += [name]
@@ -131,7 +147,7 @@ class Pruner(MetaPruner):
 
     def _update_reg(self):
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
+            if name in self.layers:
                 cnt_m = self.layers[name].layer_index
                 pr = self.pr[name]
 
@@ -151,7 +167,11 @@ class Pruner(MetaPruner):
                 
                 # update reg functions, two things: 
                 # (1) update reg of this layer (2) determine if it is time to stop update reg
-                finish_update_reg = self._greg_1(m, name)
+                
+                if self.args.greg_mode in ['part']:
+                    finish_update_reg = self._greg_1(m, name)
+                elif self.args.greg_mode in ['all']:
+                    finish_update_reg = self._greg_penaltize_all(m, name)
 
                 # check prune state
                 if finish_update_reg:
@@ -186,18 +206,18 @@ class Pruner(MetaPruner):
 
     def _apply_reg(self):
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers) and self.pr[name] > 0:
-                    reg = self.reg[name] # [N, C]
-                    m.wn_scale.grad += reg[:, 0] * m.wn_scale
-                    bias = False if isinstance(m.bias, type(None)) else True
-                    if bias:
-                        m.bias.grad += reg[:, 0] * m.bias
+            if name in self.layers and self.pr[name] > 0:
+                reg = self.reg[name] # [N, C]
+                m.wn_scale.grad += reg[:, 0] * m.wn_scale
+                bias = False if isinstance(m.bias, type(None)) else True
+                if bias:
+                    m.bias.grad += reg[:, 0] * m.bias
 
     def _merge_wn_scale_to_weights(self):
         '''Merge the learned weight normalization scale to the weights.
         '''
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers) and hasattr(m, 'wn_scale'):
+            if name in self.layers and hasattr(m, 'wn_scale'):
                 m.weight.data = F.normalize(m.weight.data, dim=(1,2,3)) * m.wn_scale.view(-1,1,1,1)
                 self.logprint(f'Merged weight normalization scale to weights: {name}')
 

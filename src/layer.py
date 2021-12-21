@@ -5,12 +5,14 @@ import numpy as np
 from collections import OrderedDict
 
 class Layer:
-    def __init__(self, name, size, layer_index, res=False, layer_type=None):
+    def __init__(self, name, size, layer_index, module, res=False, layer_type=None):
         self.name = name
         self.size = []
         for x in size:
             self.size.append(x)
-        self.layer_index = layer_index
+        self.layer_index = layer_index # deprecated, use 'index' instead, keep it to maintain back-compatibility
+        self.index = layer_index
+        self.module = module
         self.layer_type = layer_type
         self.is_shortcut = True if "downsample" in name else False
         # if res:
@@ -42,36 +44,33 @@ class Layer:
             except:
                 print('! Parsing the layer name failed: %s. Please check.' % name)
 
-
-class Layers:
-    def __init__(self, model, print_func=print):
-        self.learnable_layers = (nn.Conv2d, nn.Linear)
+class LayerStruct:
+    def __init__(self, model, LEARNABLES):
         self.model = model
-        self.layers = {}
-        self.print = print_func
+        self.LEARNABLES = LEARNABLES
         self.register_layers()
         
-
     def register_layers(self):
-        '''
-            This will maintain a data structure that can return some useful 
-            information by the name of a layer.
-        '''
-        ix = -1 # layer index, starts from 0
+        """This will maintain a data structure that can return some useful information by the name of a layer.
+        """
+        self.layers = OrderedDict()
         self._max_len_name = 0
+
+        ix = -1 # layer index, starts from 0
         layer_shape = {}
-        
         for name, m in self.model.named_modules():
-            if isinstance(m, self.learnable_layers):
+            if isinstance(m, self.LEARNABLES):
                 if "downsample" not in name:
                     ix += 1
                 layer_shape[name] = [ix, m.weight.size()]
                 self._max_len_name = max(self._max_len_name, len(name))
                 size = m.weight.size()
-                self.layers[name] = Layer(name, size, ix, res=True, layer_type=m.__class__.__name__)
+                self.layers[name] = Layer(name, size, ix, module=m, res=True, layer_type=m.__class__.__name__)
         
         self._max_len_ix = len("%s" % ix)
-        self.print("Register layer index and kernel shape:")
+        self.num_layers = ix + 1
+        
+        print("Register layer index and kernel shape:")
         format_str = "[%{}d] %{}s -- kernel_shape: %s".format(self._max_len_ix, self._max_len_name)
         for name, (ix, ks) in layer_shape.items():
-            self.print(format_str % (ix, name, ks))
+            print(format_str % (ix, name, ks))
