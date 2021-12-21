@@ -7,13 +7,15 @@ from collections import OrderedDict
 class Layer:
     def __init__(self, name, size, layer_index, module, res=False, layer_type=None):
         self.name = name
-        self.size = []
+        self.module = module
+        self.size = [] # deprecated in support of 'shape'
         for x in size:
             self.size.append(x)
-        self.layer_index = layer_index # deprecated, use 'index' instead, keep it to maintain back-compatibility
+        self.shape = self.size
+        self.layer_index = layer_index # deprecated in support of 'index'
         self.index = layer_index
-        self.module = module
-        self.layer_type = layer_type
+        self.layer_type = layer_type # deprecated in support of 'type'
+        self.type = layer_type
         self.is_shortcut = True if "downsample" in name else False
         # if res:
         #     self.stage, self.seq_index, self.block_index = self._get_various_index_by_name(name)
