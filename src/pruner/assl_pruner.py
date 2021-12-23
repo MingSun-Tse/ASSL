@@ -51,8 +51,8 @@ class Pruner(MetaPruner):
         # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
         self._get_kept_wg_L1()
-        if self.args.same_pruned_wg_layers:
-            self._set_same_pruned_wg() # randomly select wg to prune
+        # if self.args.same_pruned_wg_layers:
+        #     self._set_same_pruned_wg() # randomly select wg to prune
 
         # init prune_state
         self.prune_state = "update_reg"
@@ -114,12 +114,10 @@ class Pruner(MetaPruner):
         '''Set pruned_wg of some layers to the same indeces. Useful in pruning the last layer in a residual block.
         '''
         index = 0
-        self.constrained_layers = []
         for name, m in self.model.named_modules():
             if name in self.layers and self.pr[name] > 0:
                 for p in self.args.same_pruned_wg_layers:
                     if fnmatch(name, p):
-                        self.constrained_layers += [name]
                         if self.args.same_pruned_wg_criterion == 'rand':
                             if isinstance(index, int):
                                 n_wg = len(self._get_score(m)[0])
@@ -158,10 +156,6 @@ class Pruner(MetaPruner):
                 if name in self.iter_update_reg_finished.keys():
                     continue
 
-                if self.total_iter % self.args.print_interval == 0:
-                    self.logprint("[%d] Update reg for layer '%s'. Pr = %s. Iter = %d" 
-                        % (cnt_m, name, pr, self.total_iter))
-                
                 # get the importance score (L1-norm in this case)
                 self.w_abs[name], self.wn_scale[name] = self._get_score(m)
                 
@@ -177,32 +171,18 @@ class Pruner(MetaPruner):
                 if finish_update_reg:
                     # after 'update_reg' stage, keep the reg to stabilize weight magnitude
                     self.iter_update_reg_finished[name] = self.total_iter
-                    self.logprint("==> [%d] Just finished 'update_reg'. Iter = %d" % (cnt_m, self.total_iter))
+                    self.logprint(f"==> {self.layer_print_prefix[name]} -- Just finished 'update_reg'. Iter {self.total_iter}. pr {self.pr[name]}")
 
                     # check if all layers finish 'update_reg'
                     self.prune_state = "stabilize_reg"
                     for n, mm in self.model.named_modules():
-                        if isinstance(mm, nn.Conv2d) or isinstance(mm, nn.Linear):
+                        if isinstance(mm, self.LEARNABLES):
                             if n not in self.iter_update_reg_finished:
                                 self.prune_state = "update_reg"
                                 break
                     if self.prune_state == "stabilize_reg":
                         self.iter_stabilize_reg = self.total_iter
                         self.logprint("==> All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
-                    
-                # after reg is updated, print to check
-                if self.total_iter % self.args.print_interval == 0:
-                    self.logprint("    reg_status: min = %.5f ave = %.5f max = %.5f" % 
-                                (self.reg[name].min(), self.reg[name].mean(), self.reg[name].max()))
-                    w_abs = self.w_abs[name].data.cpu().numpy()
-                    wn_scale = self.wn_scale[name].data.cpu().numpy()
-                    avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
-                    avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
-                    avg_scale_pruned = np.mean(wn_scale[self.pruned_wg[name]])
-                    avg_scale_kept   = np.mean(wn_scale[self.kept_wg[name]])
-                    self.logprint("    average weight magnitude: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept))
-                    self.logprint("    average weight  wn_scale: pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept))
-
 
     def _apply_reg(self):
         for name, m in self.model.named_modules():
@@ -300,7 +280,7 @@ class Pruner(MetaPruner):
                 loss_reg = -torch.mm(soft_masks, soft_masks.t()).mean()
                 loss_reg_hard = -torch.mm(hard_masks, hard_masks.t()).mean().data # only as an analysis metric, not optimized
                 if self.total_iter % 20 == 0:
-                    logstr = f'loss_recon {loss.item():.4f} loss_reg (*{self.args.lw_spr}) {loss_reg.item():6f} (loss_reg_hard {loss_reg_hard.item():.6f})'
+                    logstr = f'Iter {self.total_iter} loss_recon {loss.item():.4f} loss_reg (*{self.args.lw_spr}) {loss_reg.item():6f} (loss_reg_hard {loss_reg_hard.item():.6f})'
                     self.logprint(logstr)
                 loss += loss_reg * self.args.lw_spr
 
@@ -315,13 +295,17 @@ class Pruner(MetaPruner):
             if self.total_iter % self.args.print_interval == 0:
                 self.logprint("")
                 self.logprint("Iter = %d [prune_state = %s, method = %s] " % (self.total_iter, self.prune_state, self.args.method) + "-"*40)
-            
+  
             if self.total_iter == self.args.iter_finish_spr:
                 self._reset_kept_wg_for_constrained()
 
             if self.prune_state == "update_reg" and self.total_iter % self.args.update_reg_interval == 0:
                 self._update_reg()
-            
+
+            # after reg is updated, print to check
+            if self.total_iter % self.args.print_interval == 0:
+                self._print_reg_status()
+        
             if self.args.apply_reg: # reg can also be not applied, as a baseline for comparison
                 self._apply_reg()
             # ---
@@ -353,6 +337,25 @@ class Pruner(MetaPruner):
         self.error_last = self.loss.log[-1, -1]
         self.optimizer.schedule()
 
+    def _print_reg_status(self):
+        self.logprint('************* Regularization Status *************')
+        for name, module in self.model.named_modules():
+            if name in self.layers and self.pr[name] > 0:
+                logstr = [self.layer_print_prefix[name]]
+                logstr += [f"reg_status: min {self.reg[name].min():.5f} ave {self.reg[name].mean():.5f} max {self.reg[name].max():.5f}"]
+                self.w_abs[name], self.wn_scale[name] = self._get_score(module)
+                w_abs = self.w_abs[name].data.cpu().numpy()
+                wn_scale = self.wn_scale[name].data.cpu().numpy()
+                avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
+                avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
+                avg_scale_pruned = np.mean(wn_scale[self.pruned_wg[name]])
+                avg_scale_kept   = np.mean(wn_scale[self.kept_wg[name]])
+                logstr += ["average weight magnitude: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept)]
+                logstr += ["average weight wn_scale: pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept)]
+                logstr += [f'Iter {self.total_iter}']
+                self.logprint(' | '.join(logstr))
+        self.logprint('*************************************************')
+        
     def test(self):
         is_train = self.model.training
         torch.set_grad_enabled(False)

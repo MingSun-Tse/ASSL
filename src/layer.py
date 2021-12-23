@@ -3,6 +3,7 @@ import torch.nn as nn
 import copy
 import numpy as np
 from collections import OrderedDict
+tensor2list = lambda x: x.data.cpu().numpy().tolist()
 
 class Layer:
     def __init__(self, name, size, layer_index, module, res=False, layer_type=None):
@@ -51,28 +52,37 @@ class LayerStruct:
         self.model = model
         self.LEARNABLES = LEARNABLES
         self.register_layers()
+        self.get_print_prefix()
+        self.print_layer_stats()
         
     def register_layers(self):
         """This will maintain a data structure that can return some useful information by the name of a layer.
+        TODO-@mst: Update this: https://github.com/MingSun-Tse/Pruning/blob/2bb7012d81e3c8326a2f756782b41c3d7ca9da21/pruner/meta_pruner.py#L65
         """
         self.layers = OrderedDict()
         self._max_len_name = 0
+        self._max_len_shape = 0
 
         ix = -1 # layer index, starts from 0
-        layer_shape = {}
         for name, m in self.model.named_modules():
             if isinstance(m, self.LEARNABLES):
                 if "downsample" not in name:
                     ix += 1
-                layer_shape[name] = [ix, m.weight.size()]
                 self._max_len_name = max(self._max_len_name, len(name))
-                size = m.weight.size()
-                self.layers[name] = Layer(name, size, ix, module=m, res=True, layer_type=m.__class__.__name__)
+                self.layers[name] = Layer(name, size=m.weight.size(), layer_index=ix, module=m, layer_type=m.__class__.__name__)
+                self._max_len_shape = max(self._max_len_shape, len(str(self.layers[name].shape)))
         
-        self._max_len_ix = len("%s" % ix)
+        self._max_len_ix = len(str(ix))
         self.num_layers = ix + 1
         
-        print("Register layer index and kernel shape:")
-        format_str = "[%{}d] %{}s -- kernel_shape: %s".format(self._max_len_ix, self._max_len_name)
-        for name, (ix, ks) in layer_shape.items():
-            print(format_str % (ix, name, ks))
+    def get_print_prefix(self):
+        self.print_prefix = OrderedDict()
+        for name, layer in self.layers.items():
+            format_str = f"[%{self._max_len_ix}d] %{self._max_len_name}s %{self._max_len_shape}s"
+            self.print_prefix[name] = format_str % (layer.index, name, layer.shape)
+    
+    def print_layer_stats(self):
+        print('************************ Layer Statistics ************************')
+        for name, layer in self.layers.items():
+            print(f'{self.print_prefix[name]}')
+        print('******************************************************************')

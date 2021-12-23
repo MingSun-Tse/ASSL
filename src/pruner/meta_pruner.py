@@ -25,6 +25,7 @@ class MetaPruner:
         self.layers = layer_struct.layers
         self._max_len_ix = layer_struct._max_len_ix
         self._max_len_name = layer_struct._max_len_name
+        self.layer_print_prefix = layer_struct.print_prefix
 
         # set up pr for each layer
         self.pr = get_pr_model(self.layers, args.stage_pr, skip=args.skip_layers, compare_mode=args.compare_mode)
@@ -44,11 +45,12 @@ class MetaPruner:
         # ***************************************************************************
         
         # print
+        print(f'*********** Get pruned wg ***********')
         for name, layer in self.layers.items():
-            ext = f' -- this is a constrained layer. Its pruned/kept indices have been adjusted.' if name in self.constrained_layers else ''
-            format_str = "[%{}d] %{}s -- got pruned wg by L1 sorting (%s), pr %s".format(self._max_len_ix, self._max_len_name)
-            logtmp = format_str % (layer.index, name, self.args.pick_pruned, self.pr[name])
+            logtmp = f'{self.layer_print_prefix[name]} -- Got pruned wg by L1 sorting ({self.args.pick_pruned}), pr {self.pr[name]}'
+            ext = f' -- This is a constrained layer. Its pruned/kept indices have been adjusted.' if name in self.constrained_layers else ''
             self.netprint(logtmp + ext)
+        print(f'*************************************')
 
     def _prune_and_build_new_model(self):
         if self.args.wg == 'weight':
