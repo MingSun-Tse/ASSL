@@ -77,8 +77,8 @@ def get_score_layer(module, wg='filter', criterion='l1-norm'):
 
     out = {}
     out['l1-norm'] = tensor2list(l1)
-    if hasattr(module, 'wn_scale'): 
-        out['wn_scale'] = tensor2list(module.wn_scale.abs())
+    out['wn_scale'] = tensor2list(module.wn_scale.abs()) if hasattr(module, 'wn_scale') else [1e30] * module.weight.size(0)
+    # 1e30 to indicate this layer will not be pruned because of its unusually high scores
     out['score'] = out[criterion]
     return out
 
