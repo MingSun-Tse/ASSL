@@ -10,7 +10,11 @@ import utility
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from fnmatch import fnmatch, fnmatchcase
+from .utils import get_score_layer, pick_pruned_layer
 pjoin = os.path.join
+tensor2list = lambda x: x.data.cpu().numpy().tolist()
+tensor2array = lambda x: x.data.cpu().numpy()
+totensor = lambda x: torch.Tensor(x)
 
 class Pruner(MetaPruner):
     def __init__(self, model, args, logger, passer):
@@ -51,8 +55,8 @@ class Pruner(MetaPruner):
         # prune_init, to determine the pruned weights
         # this will update the 'self.kept_wg' and 'self.pruned_wg' 
         self._get_kept_wg_L1()
-        # if self.args.same_pruned_wg_layers:
-        #     self._set_same_pruned_wg() # randomly select wg to prune
+        if self.args.same_pruned_wg_layers and self.args.same_pruned_wg_criterion in ['rand']:
+            self._set_same_pruned_wg(sort_mode='rand') # randomly select wg to prune
 
         # init prune_state
         self.prune_state = "update_reg"
@@ -99,49 +103,17 @@ class Pruner(MetaPruner):
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
 
-    def _get_score(self, m):
-        shape = m.weight.data.shape
-        if self.args.wg == "channel":
-            w_abs = m.weight.abs().mean(dim=[0, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=0)
-        elif self.args.wg == "filter":
-            w_abs = m.weight.abs().mean(dim=[1, 2, 3]) if len(shape) == 4 else m.weight.abs().mean(dim=1)
-        elif self.args.wg == "weight":
-            w_abs = m.weight.abs().flatten()
-        wn_scale = m.wn_scale.abs() if hasattr(m, 'wn_scale') else [None] * shape[0]
-        return w_abs, wn_scale
-
-    def _set_same_pruned_wg(self):
-        '''Set pruned_wg of some layers to the same indeces. Useful in pruning the last layer in a residual block.
-        '''
-        index = 0
-        for name, m in self.model.named_modules():
-            if name in self.layers and self.pr[name] > 0:
-                for p in self.args.same_pruned_wg_layers:
-                    if fnmatch(name, p):
-                        if self.args.same_pruned_wg_criterion == 'rand':
-                            if isinstance(index, int):
-                                n_wg = len(self._get_score(m)[0])
-                                n_pruned = min(math.ceil(self.pr[name] * n_wg), n_wg - 1) # do not prune all
-                                index = np.random.permutation(n_wg)[:n_pruned]
-                            self.pruned_wg[name] = index
-                            self.kept_wg[name] = [x for x in range(n_wg) if x not in index]
-                            self.logprint('==> Set same pruned_wg randomly for "%s"' % name) 
-                            break
-
-    def _reset_kept_wg_for_constrained(self):
+    def _set_same_pruned_wg(self, sort_mode):
+        """Set pruned_wg of some layers to the same indeces. Useful in pruning the last layer in a residual block.
+        """
+        pruned = 0
         for name, m in self.model.named_modules():
             if name in self.constrained_layers:
-                n_wg = m.weight.size(0)
-                n_pruned = min(math.ceil(self.pr[name] * n_wg), n_wg - 1) # do not prune all
-                _, indices = torch.sort(m.wn_scale)
-                pruned_wg = list(indices[:n_pruned].data.cpu().numpy())
-                kept_wg = [x for x in range(n_wg) if x not in pruned_wg]
-                break
-        for name, m in self.model.named_modules():
-            if name in self.constrained_layers:
-                self.pruned_wg[name] = pruned_wg
-                self.kept_wg[name] = kept_wg
-        self.logprint('==> Reset kept and pruned wg for constrained layers.')
+                if isinstance(pruned, int):
+                    score = get_score_layer(m, wg='filter', criterion='wn_scale')['score']
+                    pruned, kept = pick_pruned_layer(score=score, pr=self.pr[name], sort_mode=sort_mode)
+                self.pruned_wg[name], self.kept_wg[name] = pruned, kept
+                self.logprint(f'==> {self.layer_print_prefix[name]} -- Set same pruned_wg (criterion: {sort_mode}). #pruned {len(pruned)}/{len(score)}')
 
     def _update_reg(self):
         for name, m in self.model.named_modules():
@@ -157,11 +129,11 @@ class Pruner(MetaPruner):
                     continue
 
                 # get the importance score (L1-norm in this case)
-                self.w_abs[name], self.wn_scale[name] = self._get_score(m)
+                out = get_score_layer(m, wg='filter', criterion='wn_scale')
+                self.w_abs[name], self.wn_scale[name] = out['l1-norm'], out['wn_scale']
                 
-                # update reg functions, two things: 
+                # update reg functions, two things:
                 # (1) update reg of this layer (2) determine if it is time to stop update reg
-                
                 if self.args.greg_mode in ['part']:
                     finish_update_reg = self._greg_1(m, name)
                 elif self.args.greg_mode in ['all']:
@@ -262,7 +234,7 @@ class Pruner(MetaPruner):
             loss = self.loss(sr, hr)
 
             # @mst: sparsity pattern regularization loss
-            if self.args.same_pruned_wg_criterion == 'reg' and \
+            if self.args.same_pruned_wg_criterion in ['reg'] and \
                 self.total_iter < self.args.iter_finish_spr:
                 n = len(self.constrained_layers)
                 soft_masks = torch.zeros(n, self.args.n_feats, requires_grad=True).cuda()
@@ -296,8 +268,9 @@ class Pruner(MetaPruner):
                 self.logprint("")
                 self.logprint("Iter = %d [prune_state = %s, method = %s] " % (self.total_iter, self.prune_state, self.args.method) + "-"*40)
   
-            if self.total_iter == self.args.iter_finish_spr:
-                self._reset_kept_wg_for_constrained()
+            if self.args.same_pruned_wg_criterion in ['reg'] and self.total_iter == self.args.iter_finish_spr:
+                self._set_same_pruned_wg(sort_mode='min')
+                print(f'==> Reset kept and pruned wg for constrained layers, done. Iter {self.total_iter}')
 
             if self.prune_state == "update_reg" and self.total_iter % self.args.update_reg_interval == 0:
                 self._update_reg()
@@ -339,13 +312,12 @@ class Pruner(MetaPruner):
 
     def _print_reg_status(self):
         self.logprint('************* Regularization Status *************')
-        for name, module in self.model.named_modules():
+        for name, m in self.model.named_modules():
             if name in self.layers and self.pr[name] > 0:
                 logstr = [self.layer_print_prefix[name]]
                 logstr += [f"reg_status: min {self.reg[name].min():.5f} ave {self.reg[name].mean():.5f} max {self.reg[name].max():.5f}"]
-                self.w_abs[name], self.wn_scale[name] = self._get_score(module)
-                w_abs = self.w_abs[name].data.cpu().numpy()
-                wn_scale = self.wn_scale[name].data.cpu().numpy()
+                out = get_score_layer(m, wg='filter', criterion='wn_scale')
+                w_abs, wn_scale = out['l1-norm'], out['wn_scale']
                 avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
                 avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
                 avg_scale_pruned = np.mean(wn_scale[self.pruned_wg[name]])

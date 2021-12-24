@@ -63,7 +63,7 @@ def get_score_layer(module, wg='filter', criterion='l1-norm'):
     r"""Get importance score for a layer.
 
     Return:
-        A dict that has key 'score', whose value is a list
+        out (dict): A dict that has key 'score', whose value is a numpy array
     """
     # -- define any scoring scheme here as you like
     shape = module.weight.data.shape
@@ -76,14 +76,18 @@ def get_score_layer(module, wg='filter', criterion='l1-norm'):
     # --
 
     out = {}
-    out['l1-norm'] = tensor2list(l1)
-    out['wn_scale'] = tensor2list(module.wn_scale.abs()) if hasattr(module, 'wn_scale') else [1e30] * module.weight.size(0)
+    out['l1-norm'] = tensor2array(l1)
+    out['wn_scale'] = tensor2array(module.wn_scale.abs()) if hasattr(module, 'wn_scale') else [1e30] * module.weight.size(0)
     # 1e30 to indicate this layer will not be pruned because of its unusually high scores
     out['score'] = out[criterion]
     return out
 
 def pick_pruned_layer(score, pr=None, threshold=None, sort_mode='min'):
     r"""Get the indices of pruned weight groups in a layer.
+
+    Return: 
+        pruned (list)
+        kept (list)
     """
     assert sort_mode in ['min', 'rand', 'max']
     score = np.array(score)
@@ -121,7 +125,7 @@ def pick_pruned_model(layers, pr, wg='filter', criterion='l1-norm', compare_mode
         score = out['score']
         layer.score = score
         if pr[name] > 0: # pr > 0 indicates we want to prune this layer so its score will be included in the <all_scores>
-            all_scores += score
+            all_scores = np.append(all_scores, score)
 
         # local pruning
         if compare_mode in ['local']:

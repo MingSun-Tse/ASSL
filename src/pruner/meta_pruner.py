@@ -32,7 +32,7 @@ class MetaPruner:
 
         # pick pruned and kept weight groups
         self.constrained_layers = get_constrained_layers(self.layers, self.args.same_pruned_wg_layers)
-        print(f'constrained: {self.constrained_layers}')
+        print(f'Constrained layers: {self.constrained_layers}')
 
     def _get_kept_wg_L1(self):
         # ************************* core pruning function **************************
