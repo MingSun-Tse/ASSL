@@ -266,7 +266,7 @@ class Pruner(MetaPruner):
             # --- @mst: update reg factors and apply them before optimizer updates
             if self.total_iter % self.args.print_interval == 0:
                 self.logprint("")
-                self.logprint("Iter = %d [prune_state = %s, method = %s] " % (self.total_iter, self.prune_state, self.args.method) + "-"*40)
+                self.logprint(f"Iter {self.total_iter} [prune_state: {self.prune_state} method: {self.args.method} compare_mode: {self.args.compare_mode} greg_mode: {self.args.greg_mode}] " + "-"*40)
   
             if self.args.same_pruned_wg_criterion in ['reg'] and self.total_iter == self.args.iter_finish_spr:
                 self._set_same_pruned_wg(sort_mode='min')
@@ -318,13 +318,13 @@ class Pruner(MetaPruner):
                 logstr += [f"reg_status: min {self.reg[name].min():.5f} ave {self.reg[name].mean():.5f} max {self.reg[name].max():.5f}"]
                 out = get_score_layer(m, wg='filter', criterion='wn_scale')
                 w_abs, wn_scale = out['l1-norm'], out['wn_scale']
-                avg_mag_pruned = np.mean(w_abs[self.pruned_wg[name]])
-                avg_mag_kept   = np.mean(w_abs[self.kept_wg[name]])
-                avg_scale_pruned = np.mean(wn_scale[self.pruned_wg[name]])
-                avg_scale_kept   = np.mean(wn_scale[self.kept_wg[name]])
-                logstr += ["average weight magnitude: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept)]
-                logstr += ["average weight wn_scale: pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept)]
+                pruned, kept = pick_pruned_layer(score=wn_scale, pr=self.pr[name], sort_mode='min')
+                avg_mag_pruned, avg_mag_kept = np.mean(w_abs[pruned]), np.mean(w_abs[kept])
+                avg_scale_pruned, avg_scale_kept = np.mean(wn_scale[pruned]), np.mean(wn_scale[kept])
+                logstr += ["average w_mag: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept)]
+                logstr += ["average wn_scale: pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept)]
                 logstr += [f'Iter {self.total_iter}']
+                logstr += [f'pr {self.pr[name]}']
                 self.logprint(' | '.join(logstr))
         self.logprint('*************************************************')
         
@@ -361,14 +361,16 @@ class Pruner(MetaPruner):
 
                 self.ckp.log[-1, idx_data, idx_scale] /= len(d)
                 best = self.ckp.log.max(0)
-                logstr = '[{} x{}]\tPSNR: {:.3f} (Best: {:.3f} @epoch {}) [prune_state = {}, method = {}]'.format(
+                logstr = '[{} x{}]\tPSNR: {:.3f} (Best: {:.3f} @epoch {}) [prune_state: {} method: {} compare_mode: {} greg_mode: {}]'.format(
                         d.dataset.name,
                         scale,
                         self.ckp.log[-1, idx_data, idx_scale],
                         best[0][idx_data, idx_scale],
                         best[1][idx_data, idx_scale] + 1,
                         self.prune_state, 
-                        self.args.method
+                        self.args.method,
+                        self.args.compare_mode,
+                        self.args.greg_mode,
                     )
                 self.ckp.write_log(logstr)
                 self.logprint(logstr)
