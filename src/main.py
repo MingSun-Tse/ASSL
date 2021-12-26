@@ -96,6 +96,12 @@ def main():
                 
             _loss = loss.Loss(args, checkpoint) if not args.test_only else None
             t = Trainer(args, loader, _model, _loss, checkpoint)
+            
+            if args.greg_mode in ['all']: 
+                checkpoint.save(t, epoch=0, is_best=False)
+                print(f'==> Regularizing all wn_scale parameters done. Checkpoint saved. Exit!')
+                exit(0)
+            
             while not t.terminate():
                 t.train()
                 t.test()

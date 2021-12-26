@@ -1,5 +1,6 @@
 import argparse
 import template
+import glob
 from utils import strlist_to_list, strdict_to_dict, check_path, parse_prune_ratio_vgg
 
 parser = argparse.ArgumentParser(description='EDSR and MDSR')
@@ -199,7 +200,7 @@ parser.add_argument('--prune_criterion', type=str, default='l1-norm', choices=['
 # WN+Reg
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')
 parser.add_argument('--lw_spr', type=float, default=1, help='lw for loss of sparsity pattern regularization')
-parser.add_argument('--iter_finish_spr', type=int, default=17260, help='863x20 = 20 epochs')
+parser.add_argument('--iter_finish_spr', '--iter_ssa', dest='iter_ssa', type=int, default=17260, help='863x20 = 20 epochs')
 
 args = parser.parse_args()
 template.set_template(args)
@@ -222,10 +223,13 @@ for arg in vars(args):
 # stage_pr is a list of float, skip_layers is a list of strings
 if args.method in ['L1', 'GReg-1', 'ASSL']:
     assert args.stage_pr
-    if args.compare_mode in ['global']:
-        args.stage_pr = float(args.stage_pr)
-    elif args.compare_mode in ['local']:
-        args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
+    if glob.glob(args.stage_pr): # 'stage_pr' is a path
+        args.stage_pr = check_path(args.stage_pr)
+    else:
+        if args.compare_mode in ['global']: # 'stage_pr' is a float
+            args.stage_pr = float(args.stage_pr)
+        elif args.compare_mode in ['local']: # 'stage_pr' is a list
+            args.stage_pr = parse_prune_ratio_vgg(args.stage_pr, num_layers=args.num_layers)
     args.skip_layers = strlist_to_list(args.skip_layers, str)
     args.reinit_layers = strlist_to_list(args.reinit_layers, str)
     args.same_pruned_wg_layers = strlist_to_list(args.same_pruned_wg_layers, str)

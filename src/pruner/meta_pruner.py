@@ -28,20 +28,22 @@ class MetaPruner:
         self.layer_print_prefix = layer_struct.print_prefix
 
         # set up pr for each layer
-        self.pr = get_pr_model(self.layers, args.stage_pr, skip=args.skip_layers, compare_mode=args.compare_mode)
+        self.raw_pr = get_pr_model(self.layers, args.stage_pr, skip=args.skip_layers, compare_mode=args.compare_mode)
+        self.pr = copy.deepcopy(self.raw_pr)
 
         # pick pruned and kept weight groups
         self.constrained_layers = get_constrained_layers(self.layers, self.args.same_pruned_wg_layers)
         print(f'Constrained layers: {self.constrained_layers}')
 
-    def _get_kept_wg_L1(self):
+    def _get_kept_wg_L1(self, align_constrained=False):
         # ************************* core pruning function **************************
-        self.pr, self.pruned_wg, self.kept_wg = pick_pruned_model(self.layers, self.pr, 
+        self.pr, self.pruned_wg, self.kept_wg = pick_pruned_model(self.model, self.layers, self.raw_pr, 
                                                         wg=self.args.wg, 
                                                         criterion=self.args.prune_criterion,
                                                         compare_mode=self.args.compare_mode,
                                                         sort_mode=self.args.pick_pruned,
-                                                        constrained=self.constrained_layers)
+                                                        constrained=self.constrained_layers,
+                                                        align_constrained=align_constrained)
         # ***************************************************************************
         
         # print
@@ -116,8 +118,8 @@ class MetaPruner:
                 
                 # load the new bn
                 replace_module(new_model, name, new_bn)
-
         self.model = new_model
 
         # print the layer shape of pruned model
         LayerStruct(new_model, self.LEARNABLES)
+        return new_model

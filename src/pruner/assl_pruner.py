@@ -51,15 +51,16 @@ class Pruner(MetaPruner):
         self.hist_mag_ratio = {}
         self.w_abs = {}
         self.wn_scale = {}
-        
-        # prune_init, to determine the pruned weights
-        # this will update the 'self.kept_wg' and 'self.pruned_wg' 
-        self._get_kept_wg_L1()
-        if self.args.same_pruned_wg_layers and self.args.same_pruned_wg_criterion in ['rand']:
-            self._set_same_pruned_wg(sort_mode='rand') # randomly select wg to prune
 
         # init prune_state
-        self.prune_state = "update_reg"
+        if args.same_pruned_wg_layers and args.same_pruned_wg_criterion in ['reg']:
+            self.prune_state = "ssa" # sparsity structure alignment
+        else:
+            self.prune_state = "update_reg"
+
+        # init pruned_wg/kept_wg if they can be determined right at the begining
+        if args.greg_mode in ['part'] and self.prune_state in ['update_reg']:
+            self._get_kept_wg_L1(align_constrained=True) # this will update the 'self.kept_wg', 'self.pruned_wg', 'self.pr'
 
     def _init_reg(self):
         for name, m in self.model.named_modules():
@@ -103,28 +104,9 @@ class Pruner(MetaPruner):
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
 
-    def _set_same_pruned_wg(self, sort_mode):
-        """Set pruned_wg of some layers to the same indeces. Useful in pruning the last layer in a residual block.
-        """
-        pruned = 0
-        for name, m in self.model.named_modules():
-            if name in self.constrained_layers:
-                if isinstance(pruned, int):
-                    score = get_score_layer(m, wg='filter', criterion='wn_scale')['score']
-                    pruned, kept = pick_pruned_layer(score=score, pr=self.pr[name], sort_mode=sort_mode)
-                self.pruned_wg[name], self.kept_wg[name] = pruned, kept
-                self.logprint(f'==> {self.layer_print_prefix[name]} -- Set same pruned_wg (criterion: {sort_mode}). #pruned {len(pruned)}/{len(score)}')
-
     def _update_reg(self):
         for name, m in self.model.named_modules():
-            if name in self.layers:
-                cnt_m = self.layers[name].layer_index
-                pr = self.pr[name]
-
-                if self.args.same_pruned_wg_criterion == 'reg' and name in self.constrained_layers:
-                    if self.total_iter < self.args.iter_finish_spr:
-                        continue
-                
+            if name in self.layers:                
                 if name in self.iter_update_reg_finished.keys():
                     continue
 
@@ -176,21 +158,16 @@ class Pruner(MetaPruner):
     def _resume_prune_status(self, ckpt_path):
         raise NotImplementedError
 
-    def _save_model(self, acc1=0, acc5=0, mark=''):
-        state = {'iter': self.total_iter,
-                'prune_state': self.prune_state, # we will resume prune_state
-                'arch': self.args.arch,
-                'model': self.model,
-                'state_dict': self.model.state_dict(),
-                'iter_stabilize_reg': self.iter_stabilize_reg,
-                'acc1': acc1,
-                'acc5': acc5,
-                'optimizer': self.optimizer.state_dict(),
-                'reg': self.reg,
-                'hist_mag_ratio': self.hist_mag_ratio,
-                'ExpID': self.logger.ExpID,
+    def _save_model(self, filename):
+        savepath = f'{self.ckp.dir}/model/{filename}'
+        ckpt = {
+            'pruned_wg': self.pruned_wg,
+            'kept_wg': self.kept_wg,
+            'model': self.model,
+            'state_dict': self.model.state_dict(),
         }
-        self.save(state, is_best=False, mark=mark)
+        torch.save(ckpt, savepath) 
+        return savepath
 
     def prune(self):
         self.total_iter = 0
@@ -233,9 +210,13 @@ class Pruner(MetaPruner):
             sr = self.model(lr, 0)
             loss = self.loss(sr, hr)
 
-            # @mst: sparsity pattern regularization loss
-            if self.args.same_pruned_wg_criterion in ['reg'] and \
-                self.total_iter < self.args.iter_finish_spr:
+            # @mst: print
+            if self.total_iter % self.args.print_interval == 0:
+                self.logprint("")
+                self.logprint(f"Iter {self.total_iter} [prune_state: {self.prune_state} method: {self.args.method} compare_mode: {self.args.compare_mode} greg_mode: {self.args.greg_mode}] " + "-"*40)
+
+            # @mst: regularization loss: sparsity structure alignment (SSA)
+            if self.prune_state in ['ssa']:
                 n = len(self.constrained_layers)
                 soft_masks = torch.zeros(n, self.args.n_feats, requires_grad=True).cuda()
                 hard_masks = torch.zeros(n, self.args.n_feats, requires_grad=False).cuda()
@@ -263,16 +244,8 @@ class Pruner(MetaPruner):
                     self.args.gclip
                 )
             
-            # --- @mst: update reg factors and apply them before optimizer updates
-            if self.total_iter % self.args.print_interval == 0:
-                self.logprint("")
-                self.logprint(f"Iter {self.total_iter} [prune_state: {self.prune_state} method: {self.args.method} compare_mode: {self.args.compare_mode} greg_mode: {self.args.greg_mode}] " + "-"*40)
-  
-            if self.args.same_pruned_wg_criterion in ['reg'] and self.total_iter == self.args.iter_finish_spr:
-                self._set_same_pruned_wg(sort_mode='min')
-                print(f'==> Reset kept and pruned wg for constrained layers, done. Iter {self.total_iter}')
-
-            if self.prune_state == "update_reg" and self.total_iter % self.args.update_reg_interval == 0:
+            # @mst: update reg factors and apply them before optimizer updates
+            if self.prune_state in ['update_reg'] and self.total_iter % self.args.update_reg_interval == 0:
                 self._update_reg()
 
             # after reg is updated, print to check
@@ -281,10 +254,15 @@ class Pruner(MetaPruner):
         
             if self.args.apply_reg: # reg can also be not applied, as a baseline for comparison
                 self._apply_reg()
-            # ---
+            # --
 
             self.optimizer.step()
             timer_model.hold()
+
+            # @mst: switch prune_state
+            if self.prune_state in ['ssa'] and self.total_iter == self.args.iter_ssa:
+                self._get_kept_wg_L1(align_constrained=True)
+                self.prune_state = 'update_reg'
 
             if (batch + 1) % self.args.print_every == 0:
                 self.ckp.write_log('[{}/{}]\t{}\t{:.1f}+{:.1f}s'.format(
@@ -297,12 +275,17 @@ class Pruner(MetaPruner):
             timer_data.tic()  
 
             # @mst: exit of reg pruning loop
-            if self.prune_state == "stabilize_reg" and self.total_iter - self.iter_stabilize_reg >= self.args.stabilize_reg_interval:
-                self.logprint(f"'stabilize_reg' is done. Iter {self.total_iter}. Testing...")
+            if self.prune_state in ["stabilize_reg"] and self.total_iter - self.iter_stabilize_reg >= self.args.stabilize_reg_interval:
+                self.logprint(f"==> 'stabilize_reg' is done. Iter {self.total_iter}. Testing...")
                 self.test()
+                
+                if self.args.greg_mode in ['all']:
+                    self._get_kept_wg_L1()
+
                 self._merge_wn_scale_to_weights()
                 self._prune_and_build_new_model()
-                self.logprint(f"Pruned and built a new model, go to 'finetune'. Testing...")
+                path = self._save_model('model_just_finished_prune.pt')
+                self.logprint(f"==> Pruned and built a new model. Ckpt saved: '{path}'. Testing...")
                 self.test()
                 return True              
 
