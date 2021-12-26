@@ -195,7 +195,7 @@ parser.add_argument('--not_apply_reg', dest='apply_reg', action='store_false', d
 parser.add_argument('--layer_chl', type=str, default='', help='manually assign the number of channels for some layers. A not so beautiful scheme.')
 parser.add_argument('--greg_mode', type=str, default='part', choices=['part', 'all'])
 parser.add_argument('--compare_mode', type=str, default='local', choices=['local', 'global'])
-parser.add_argument('--prune_criterion', type=str, default='l1-norm', choices=['l1-norm', 'wn_scale'])
+parser.add_argument('--prune_criterion', type=str, default='wn_scale', choices=['l1-norm', 'wn_scale'])
 
 # WN+Reg
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')

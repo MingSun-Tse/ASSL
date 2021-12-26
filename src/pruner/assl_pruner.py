@@ -53,10 +53,9 @@ class Pruner(MetaPruner):
         self.wn_scale = {}
 
         # init prune_state
-        if args.same_pruned_wg_layers and args.same_pruned_wg_criterion in ['reg']:
+        self.prune_state = 'update_reg'
+        if args.greg_mode in ['part'] and args.same_pruned_wg_layers and args.same_pruned_wg_criterion in ['reg']:
             self.prune_state = "ssa" # sparsity structure alignment
-        else:
-            self.prune_state = "update_reg"
 
         # init pruned_wg/kept_wg if they can be determined right at the begining
         if args.greg_mode in ['part'] and self.prune_state in ['update_reg']:
@@ -280,7 +279,7 @@ class Pruner(MetaPruner):
                 self.test()
                 
                 if self.args.greg_mode in ['all']:
-                    self._get_kept_wg_L1()
+                    self._get_kept_wg_L1(align_constrained=True)
 
                 self._merge_wn_scale_to_weights()
                 self._prune_and_build_new_model()
