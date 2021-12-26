@@ -21,35 +21,44 @@ def get_pr_layer(base_pr, layer_name, layer_index, skip=[], compare_mode='local'
     return pr
 
 def get_pr_model(layers, base_pr, skip=[], compare_mode='local'):
-    """Get layer-wise pruning ratio for a model
+    """Get layer-wise pruning ratio for a model.
     """
     pr = OrderedDict()
-    if base_pr: # 'stage_pr' may be None (in the case that 'base_pr_model' is provided)
+    if isinstance(base_pr, str):
+        ckpt = torch.load(base_pr)
+        pruned, kept = ckpt['pruned_wg'], ckpt['kept_wg']
+        for name in pruned:
+            num_pruned, num_kept = len(pruned[name]), len(kept[name])
+            pr[name] = float(num_pruned) / (num_pruned + num_kept)
+        print(f"==> Load base_pr model successfully and inherit its pruning ratio: '{base_pr}'.")
+    elif isinstance(base_pr, (float, list)):
         if compare_mode in ['global']:
+            assert isinstance(base_pr, float)
             pr['model'] = base_pr
         for name, layer in layers.items():
             pr[name] = get_pr_layer(base_pr, name, layer.index, skip=skip, compare_mode=compare_mode)
+        print(f"==> Get pr (pruning ratio) for pruning the model, done (pr may be updated later).")
     else:
         raise NotImplementedError
     return pr
 
-def get_constrained_layers(layers, constrained_layers_pattern):
+def get_constrained_layers(layers, constrained_pattern):
     constrained_layers = []
     for name, _ in layers.items():
-        for p in constrained_layers_pattern:
+        for p in constrained_pattern:
             if fnmatch(name, p):
                 constrained_layers += [name]
     return constrained_layers
 
-def adjust_pr(layers, pr, pruned, kept, num_pruned_constrained, constrained_layers):
-    """The real pr of a layer may not be exactly equal to the assigned one due to various reasons (e.g., constrained layers). 
-    Adjust it here to make them exact the same.
+def adjust_pr(layers, pr, pruned, kept, num_pruned_constrained, constrained):
+    """The real pr of a layer may not be exactly equal to the assigned one (i.e., raw pr) due to various reasons (e.g., constrained layers). 
+    Adjust it here, e.g., averaging the prs for all constrained layers. 
     """
     pr, pruned, kept = copy.deepcopy(pr), copy.deepcopy(pruned), copy.deepcopy(kept)
     for name, layer in layers.items():
-        if name in constrained_layers:
+        if name in constrained:
             # -- averaging within all constrained layers to keep the total num of pruned weight groups still the same
-            num_pruned = int(num_pruned_constrained / len(constrained_layers))
+            num_pruned = int(num_pruned_constrained / len(constrained))
             # --
             pr[name] = num_pruned / len(layer.score)
             order = pruned[name] + kept[name]
@@ -58,6 +67,21 @@ def adjust_pr(layers, pr, pruned, kept, num_pruned_constrained, constrained_laye
             num_pruned = len(pruned[name])
             pr[name] = num_pruned / len(layer.score)
     return pr, pruned, kept
+
+def set_same_pruned(model, pr, pruned_wg, kept_wg, constrained, wg='filter', criterion='l1-norm', sort_mode='min'):
+    """Set pruned wgs of some layers to the same indices.
+    """
+    pruned_wg, kept_wg = copy.deepcopy(pruned_wg), copy.deepcopy(kept_wg)
+    pruned = None
+    for name, m in model.named_modules():
+        if name in constrained:
+            if pruned is None:
+                score = get_score_layer(m, wg=wg, criterion=criterion)['score']
+                pruned, kept = pick_pruned_layer(score=score, pr=pr[name], sort_mode=sort_mode)
+                pr_first_constrained = pr[name]
+            assert pr[name] == pr_first_constrained
+            pruned_wg[name], kept_wg[name] = pruned, kept
+    return pruned_wg, kept_wg
 
 def get_score_layer(module, wg='filter', criterion='l1-norm'):
     r"""Get importance score for a layer.
@@ -106,7 +130,7 @@ def pick_pruned_layer(score, pr=None, threshold=None, sort_mode='min'):
     pruned, kept = order[:num_pruned], order[num_pruned:]
     return pruned, kept
 
-def pick_pruned_model(layers, pr, wg='filter', criterion='l1-norm', compare_mode='local', sort_mode='min', constrained=[]):
+def pick_pruned_model(model, layers, raw_pr, wg='filter', criterion='l1-norm', compare_mode='local', sort_mode='min', constrained=[], align_constrained=False):
     r"""Pick pruned weight groups for a model.
     Args:
         layers: an OrderedDict, key is layer name
@@ -116,28 +140,30 @@ def pick_pruned_model(layers, pr, wg='filter', criterion='l1-norm', compare_mode
         kept (OrderedDict): key is layer name, value is the kept indices for the layer
     """
     assert sort_mode in ['rand', 'min', 'max'] and compare_mode in ['global', 'local']
-    pruned, kept = OrderedDict(), OrderedDict()
+    pruned_wg, kept_wg = OrderedDict(), OrderedDict()
     all_scores, num_pruned_constrained = [], 0
 
     # iter to get importance score for each layer
-    for name, layer in layers.items():
-        out = get_score_layer(layer.module, wg=wg, criterion=criterion)
-        score = out['score']
-        layer.score = score
-        if pr[name] > 0: # pr > 0 indicates we want to prune this layer so its score will be included in the <all_scores>
-            all_scores = np.append(all_scores, score)
+    for name, module in model.named_modules():
+        if name in layers:
+            layer = layers[name]
+            out = get_score_layer(module, wg=wg, criterion=criterion)
+            score = out['score']
+            layer.score = score
+            if raw_pr[name] > 0: # pr > 0 indicates we want to prune this layer so its score will be included in the <all_scores>
+                all_scores = np.append(all_scores, score)
 
-        # local pruning
-        if compare_mode in ['local']:
-            assert isinstance(pr, dict)
-            pruned[name], kept[name] = pick_pruned_layer(score, pr[name], sort_mode=sort_mode)
-            if name in constrained: 
-                num_pruned_constrained += len(pruned[name])
+            # local pruning
+            if compare_mode in ['local']:
+                assert isinstance(raw_pr, dict)
+                pruned_wg[name], kept_wg[name] = pick_pruned_layer(score, raw_pr[name], sort_mode=sort_mode)
+                if name in constrained: 
+                    num_pruned_constrained += len(pruned_wg[name])
     
     # global pruning
     if compare_mode in ['global']:
         num_total = len(all_scores)
-        num_pruned = min(math.ceil(pr['model'] * num_total), num_total - 1) # do not prune all
+        num_pruned = min(math.ceil(raw_pr['model'] * num_total), num_total - 1) # do not prune all
         if sort_mode == 'min':
             threshold = sorted(all_scores)[num_pruned] # in ascending order
         elif sort_mode == 'max':
@@ -145,21 +171,25 @@ def pick_pruned_model(layers, pr, wg='filter', criterion='l1-norm', compare_mode
         print(f'#all_scores: {len(all_scores)} threshold:{threshold:.6f}')
 
         for name, layer in layers.items():
-            if pr[name] > 0:
+            if raw_pr[name] > 0:
                 if sort_mode in ['rand']:
                     pass
                 elif sort_mode in ['min', 'max']:
-                    pruned[name], kept[name] = pick_pruned_layer(layer.score, pr=None, threshold=threshold, sort_mode=sort_mode)
+                    pruned_wg[name], kept_wg[name] = pick_pruned_layer(layer.score, pr=None, threshold=threshold, sort_mode=sort_mode)
             else:
-                pruned[name], kept[name] = [], list(range(len(layer.score)))
+                pruned_wg[name], kept_wg[name] = [], list(range(len(layer.score)))
             if name in constrained: 
-                num_pruned_constrained += len(pruned[name])
+                num_pruned_constrained += len(pruned_wg[name])
     
     # adjust pr/pruned/kept
-    pr, pruned, kept = adjust_pr(layers, pr, pruned, kept, num_pruned_constrained, constrained)
-    print(f'Adjust pr/pruned/kept done.')
+    pr, pruned_wg, kept_wg = adjust_pr(layers, raw_pr, pruned_wg, kept_wg, num_pruned_constrained, constrained)
+    print(f'==> Adjust pr/pruned/kept, done.')
+
+    if align_constrained:
+        pruned_wg, kept_wg = set_same_pruned(model, pr, pruned_wg, kept_wg, constrained, 
+                                                wg=wg, criterion=criterion, sort_mode=sort_mode)
     
-    return pr, pruned, kept
+    return pr, pruned_wg, kept_wg
 
 def get_next_learnable(layers, layer_name, n_conv_within_block=3):
     r"""Get the next learnable layer for the layer of 'layer_name', chosen from 'layers'.
