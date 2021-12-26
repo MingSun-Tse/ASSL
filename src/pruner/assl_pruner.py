@@ -258,11 +258,6 @@ class Pruner(MetaPruner):
             self.optimizer.step()
             timer_model.hold()
 
-            # @mst: switch prune_state
-            if self.prune_state in ['ssa'] and self.total_iter == self.args.iter_ssa:
-                self._get_kept_wg_L1(align_constrained=True)
-                self.prune_state = 'update_reg'
-
             if (batch + 1) % self.args.print_every == 0:
                 self.ckp.write_log('[{}/{}]\t{}\t{:.1f}+{:.1f}s'.format(
                     (batch + 1) * self.args.batch_size,
@@ -270,23 +265,31 @@ class Pruner(MetaPruner):
                     self.loss.display_loss(batch),
                     timer_model.release(),
                     timer_data.release()))
-
-            timer_data.tic()  
+            timer_data.tic()
+            
+            # @mst: switch prune_state
+            if self.prune_state in ['ssa'] and self.total_iter == self.args.iter_ssa:
+                self._get_kept_wg_L1(align_constrained=True)
+                self.prune_state = 'update_reg'
+                self.logprint(f'==> Iter {self.total_iter} prune_state ssa is done, get pruned_wg/kept_wg, switch to {self.prune_state}.')
 
             # @mst: exit of reg pruning loop
-            if self.prune_state in ["stabilize_reg"] and self.total_iter - self.iter_stabilize_reg >= self.args.stabilize_reg_interval:
+            if self.prune_state in ["stabilize_reg"] and self.total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
                 self.logprint(f"==> 'stabilize_reg' is done. Iter {self.total_iter}. Testing...")
                 self.test()
                 
                 if self.args.greg_mode in ['all']:
                     self._get_kept_wg_L1(align_constrained=True)
+                    self.logprint(f'==> Get pruned_wg/kept_wg.')
 
                 self._merge_wn_scale_to_weights()
                 self._prune_and_build_new_model()
                 path = self._save_model('model_just_finished_prune.pt')
                 self.logprint(f"==> Pruned and built a new model. Ckpt saved: '{path}'. Testing...")
                 self.test()
-                return True              
+                return True            
+
+
 
         self.loss.end_log(len(self.loader_train))
         self.error_last = self.loss.log[-1, -1]

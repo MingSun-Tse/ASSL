@@ -120,6 +120,7 @@ class checkpoint():
     def write_log(self, log, refresh=False):
         print(log)
         self.log_file.write(log + '\n')
+        self.log_file.flush()
         if refresh:
             self.log_file.close()
             self.log_file = open(self.get_path('log.txt'), 'a')
@@ -128,6 +129,7 @@ class checkpoint():
     def write_log_prune(self, log, refresh=False):
         print(log)
         self.log_file_prune.write(log + '\n')
+        self.log_file_prune.flush()
         if refresh:
             self.log_file_prune.close()
             self.log_file_prune = open(self.get_path('log_prune.txt'), 'a')
