@@ -266,7 +266,7 @@ class Pruner(MetaPruner):
                     timer_model.release(),
                     timer_data.release()))
             timer_data.tic()
-            
+
             # @mst: switch prune_state
             if self.prune_state in ['ssa'] and self.total_iter == self.args.iter_ssa:
                 self._get_kept_wg_L1(align_constrained=True)
@@ -282,11 +282,12 @@ class Pruner(MetaPruner):
                     self._get_kept_wg_L1(align_constrained=True)
                     self.logprint(f'==> Get pruned_wg/kept_wg.')
 
-                self._merge_wn_scale_to_weights()
+                # self._merge_wn_scale_to_weights()
                 self._prune_and_build_new_model()
                 path = self._save_model('model_just_finished_prune.pt')
                 self.logprint(f"==> Pruned and built a new model. Ckpt saved: '{path}'. Testing...")
                 self.test()
+                exit()
                 return True            
 
 

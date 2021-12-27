@@ -262,7 +262,6 @@ def get_kept_filter_channel(layers, layer_name, pr, kept_wg, wg='filter'):
         kept_chl = kept_wg[layer_name]
         next_learnable = get_next_learnable(layers, layer_name)
         kept_filter = list(range(current_layer.module.weight.size(0))) if next_learnable is None else kept_wg[next_learnable]
-    
     elif wg in ["filter"]:
         kept_filter = kept_wg[layer_name]
         prev_learnable = get_prev_learnable(layers, layer_name)
@@ -272,6 +271,10 @@ def get_kept_filter_channel(layers, layer_name, pr, kept_wg, wg='filter'):
             kept_chl = list(range(current_layer.module.weight.size(1)))
         else:
             kept_chl = kept_wg[prev_learnable]
+    
+    # sort to make the indices be in ascending order 
+    kept_filter.sort()
+    kept_chl.sort()
     return kept_filter, kept_chl
 
 def get_masks(layers, pruned_wg):
