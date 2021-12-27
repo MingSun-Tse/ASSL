@@ -72,7 +72,6 @@ class Pruner(MetaPruner):
         self.logprint(f"==> Pruned and built a new model. Testing...")
         self.test()
         mask = self.mask if self.args.wg == 'weight' else None
-        exit()
 
         if self.args.reinit:
             if self.args.reinit in ['default', 'kaiming_normal']:

@@ -28,12 +28,18 @@ class Model(nn.Module):
             self.model.half()
 
         if ckp:
-            self.load(
+            load_from = self.load(
                 ckp.get_path('model'),
                 pre_train=args.pre_train,
                 resume=args.resume,
                 cpu=args.cpu
             )
+            if load_from and args.wn: # @mst
+                for _, module in self.model.named_modules():
+                    if hasattr(module, 'wn_scale'):
+                        module.init_wn()
+                print(f'==> Weights are reloaded, reinit wn_scale.')
+
 
     def forward(self, x, idx_scale):
         self.idx_scale = idx_scale
@@ -109,6 +115,7 @@ class Model(nn.Module):
                 self.model.load_state_dict(load_from['state_dict'], strict=False)
             else:
                 self.model.load_state_dict(load_from, strict=False)
+        return load_from
 
     # shave = 10, min_size=160000
     def forward_chop(self, x, shave=10, min_size=160000):

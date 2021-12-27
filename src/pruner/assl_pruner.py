@@ -231,7 +231,7 @@ class Pruner(MetaPruner):
                         hard_masks[cnt] = m.wn_scale >= thre
                 loss_reg = -torch.mm(soft_masks, soft_masks.t()).mean()
                 loss_reg_hard = -torch.mm(hard_masks, hard_masks.t()).mean().data # only as an analysis metric, not optimized
-                if self.total_iter % 20 == 0:
+                if self.total_iter % self.args.print_interval == 0:
                     logstr = f'Iter {self.total_iter} loss_recon {loss.item():.4f} loss_reg (*{self.args.lw_spr}) {loss_reg.item():6f} (loss_reg_hard {loss_reg_hard.item():.6f})'
                     self.logprint(logstr)
                 loss += loss_reg * self.args.lw_spr
@@ -275,22 +275,20 @@ class Pruner(MetaPruner):
 
             # @mst: exit of reg pruning loop
             if self.prune_state in ["stabilize_reg"] and self.total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
-                self.logprint(f"==> 'stabilize_reg' is done. Iter {self.total_iter}. Testing...")
+                self.logprint(f"==> 'stabilize_reg' is done. Iter {self.total_iter}.About to prune and build new model. Testing...")
                 self.test()
                 
                 if self.args.greg_mode in ['all']:
                     self._get_kept_wg_L1(align_constrained=True)
                     self.logprint(f'==> Get pruned_wg/kept_wg.')
 
-                # self._merge_wn_scale_to_weights()
+                self._merge_wn_scale_to_weights()
                 self._prune_and_build_new_model()
                 path = self._save_model('model_just_finished_prune.pt')
                 self.logprint(f"==> Pruned and built a new model. Ckpt saved: '{path}'. Testing...")
                 self.test()
                 exit()
                 return True            
-
-
 
         self.loss.end_log(len(self.loader_train))
         self.error_last = self.loss.log[-1, -1]
