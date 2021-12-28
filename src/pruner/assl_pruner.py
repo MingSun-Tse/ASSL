@@ -287,7 +287,6 @@ class Pruner(MetaPruner):
                 path = self._save_model('model_just_finished_prune.pt')
                 self.logprint(f"==> Pruned and built a new model. Ckpt saved: '{path}'. Testing...")
                 self.test()
-                exit()
                 return True            
 
         self.loss.end_log(len(self.loader_train))
