@@ -56,7 +56,8 @@ class Pruner(MetaPruner):
         self.prune_state = 'update_reg'
         if args.greg_mode in ['part'] and args.same_pruned_wg_layers and args.same_pruned_wg_criterion in ['reg']:
             self.prune_state = "ssa" # sparsity structure alignment
-
+            self._get_kept_wg_L1(align_constrained=True)
+        
         # init pruned_wg/kept_wg if they can be determined right at the begining
         if args.greg_mode in ['part'] and self.prune_state in ['update_reg']:
             self._get_kept_wg_L1(align_constrained=True) # this will update the 'self.kept_wg', 'self.pruned_wg', 'self.pr'
@@ -87,7 +88,7 @@ class Pruner(MetaPruner):
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
 
-    def _greg_penaltize_all(self, m, name):
+    def _greg_penalize_all(self, m, name):
         if self.pr[name] == 0:
             return True
         
@@ -103,10 +104,12 @@ class Pruner(MetaPruner):
         # when all layers are pushed hard enough, stop
         return self.reg[name].max() > self.args.reg_upper_limit
 
-    def _update_reg(self):
+    def _update_reg(self, skip=[]):
         for name, m in self.model.named_modules():
             if name in self.layers:                
                 if name in self.iter_update_reg_finished.keys():
+                    continue
+                if name in skip:
                     continue
 
                 # get the importance score (L1-norm in this case)
@@ -118,7 +121,7 @@ class Pruner(MetaPruner):
                 if self.args.greg_mode in ['part']:
                     finish_update_reg = self._greg_1(m, name)
                 elif self.args.greg_mode in ['all']:
-                    finish_update_reg = self._greg_penaltize_all(m, name)
+                    finish_update_reg = self._greg_penalize_all(m, name)
 
                 # check prune state
                 if finish_update_reg:
@@ -127,13 +130,14 @@ class Pruner(MetaPruner):
                     self.logprint(f"==> {self.layer_print_prefix[name]} -- Just finished 'update_reg'. Iter {self.total_iter}. pr {self.pr[name]}")
 
                     # check if all layers finish 'update_reg'
-                    self.prune_state = "stabilize_reg"
+                    prune_state = "stabilize_reg"
                     for n, mm in self.model.named_modules():
                         if isinstance(mm, self.LEARNABLES):
                             if n not in self.iter_update_reg_finished:
-                                self.prune_state = "update_reg"
+                                prune_state = ''
                                 break
-                    if self.prune_state == "stabilize_reg":
+                    if prune_state == "stabilize_reg":
+                        self.prune_state = 'stabilize_reg'
                         self.iter_stabilize_reg = self.total_iter
                         self.logprint("==> All layers just finished 'update_reg', go to 'stabilize_reg'. Iter = %d" % self.total_iter)
 
@@ -236,6 +240,10 @@ class Pruner(MetaPruner):
                     self.logprint(logstr)
                 loss += loss_reg * self.args.lw_spr
 
+                # for constrained Conv layers, at prune_state 'ssa', do not update their regularization co-efficients
+                if self.total_iter % self.args.update_reg_interval == 0:
+                    self._update_reg(skip=self.constrained_layers)
+
             loss.backward()
             if self.args.gclip > 0:
                 utils.clip_grad_value_(
@@ -267,11 +275,11 @@ class Pruner(MetaPruner):
                     timer_data.release()))
             timer_data.tic()
 
-            # @mst: switch prune_state
+            # @mst: at the end of 'ssa', switch prune_state to 'update_reg'
             if self.prune_state in ['ssa'] and self.total_iter == self.args.iter_ssa:
-                self._get_kept_wg_L1(align_constrained=True)
+                self._get_kept_wg_L1(align_constrained=True) # this will update the pruned_wg/kept_wg for constrained Conv layers
                 self.prune_state = 'update_reg'
-                self.logprint(f'==> Iter {self.total_iter} prune_state ssa is done, get pruned_wg/kept_wg, switch to {self.prune_state}.')
+                self.logprint(f'==> Iter {self.total_iter} prune_state "ssa" is done, get pruned_wg/kept_wg, switch to {self.prune_state}.')
 
             # @mst: exit of reg pruning loop
             if self.prune_state in ["stabilize_reg"] and self.total_iter - self.iter_stabilize_reg == self.args.stabilize_reg_interval:
@@ -307,6 +315,7 @@ class Pruner(MetaPruner):
                 logstr += ["average w_mag: pruned %.6f kept %.6f" % (avg_mag_pruned, avg_mag_kept)]
                 logstr += ["average wn_scale: pruned %.6f kept %.6f" % (avg_scale_pruned, avg_scale_kept)]
                 logstr += [f'Iter {self.total_iter}']
+                logstr += [f'cstn' if name in self.constrained_layers else 'free']
                 logstr += [f'pr {self.pr[name]}']
                 self.logprint(' | '.join(logstr))
         self.logprint('*************************************************')
