@@ -77,7 +77,14 @@ def main():
                 height_lr = 1280 // args.scale[0]
                 width_lr  = 720  // args.scale[0]
                 dummy_input = torch.zeros((1, 3, height_lr, width_lr)).cuda()
+
+                # temporarily change the print fn
+                import builtins, functools
+                flops_f = open(checkpoint.get_path('model_complexity.txt'), 'a+')
+                original_print = builtins.print
+                builtins.print = functools.partial(print, file=flops_f, flush=True)
                 summary(_model, dummy_input, {'idx_scale': args.scale[0]})
+                builtins.print = original_print
 
                 # @mst: old code for printing FLOPs etc. Deprecated now. Will be removed.
                 # n_params_now_v2 = get_n_params_(_model)
@@ -100,6 +107,8 @@ def main():
             if args.greg_mode in ['all']: 
                 checkpoint.save(t, epoch=0, is_best=False)
                 print(f'==> Regularizing all wn_scale parameters done. Checkpoint saved. Exit!')
+                import shutil
+                shutil.rmtree(checkpoint.dir) # this folder is not really used, so removed here
                 exit(0)
             
             while not t.terminate():
