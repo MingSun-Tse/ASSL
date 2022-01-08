@@ -80,7 +80,7 @@ def main():
 
                 # temporarily change the print fn
                 import builtins, functools
-                flops_f = open(checkpoint.get_path('model_complexity.txt'), 'a+')
+                flops_f = open(checkpoint.get_path('model_complexity.txt'), 'w+')
                 original_print = builtins.print
                 builtins.print = functools.partial(print, file=flops_f, flush=True)
                 summary(_model, dummy_input, {'idx_scale': args.scale[0]})
