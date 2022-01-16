@@ -194,7 +194,8 @@ class Pruner(MetaPruner):
             param_group['lr'] = self.args.lr_prune # use fixed LR in pruning
 
         epoch = self.optimizer.get_last_epoch() + 1
-        learning_rate = self.optimizer.get_lr()
+        for param_group in self.optimizer.param_groups:
+            learning_rate = param_group['lr']
 
         self.ckp.write_log(
             '[Epoch {}]\tLearning rate: {:.2e}'.format(epoch, Decimal(learning_rate))
