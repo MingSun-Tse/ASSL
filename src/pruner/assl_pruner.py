@@ -190,11 +190,14 @@ class Pruner(MetaPruner):
 # ************************************************ The code below refers to RCAN ************************************************ #
     def train(self):
         self.loss.step()
+        for param_group in self.optimizer.param_groups:
+            param_group['lr'] = self.args.lr_prune # use fixed LR in pruning
+
         epoch = self.optimizer.get_last_epoch() + 1
-        lr = self.optimizer.get_lr()
+        learning_rate = self.optimizer.get_lr()
 
         self.ckp.write_log(
-            '[Epoch {}]\tLearning rate: {:.2e}'.format(epoch, Decimal(lr))
+            '[Epoch {}]\tLearning rate: {:.2e}'.format(epoch, Decimal(learning_rate))
         )
         self.loss.start_log()
         self.model.train()
@@ -216,7 +219,7 @@ class Pruner(MetaPruner):
             # @mst: print
             if self.total_iter % self.args.print_interval == 0:
                 self.logprint("")
-                self.logprint(f"Iter {self.total_iter} [prune_state: {self.prune_state} method: {self.args.method} compare_mode: {self.args.compare_mode} greg_mode: {self.args.greg_mode}] " + "-"*40)
+                self.logprint(f"Iter {self.total_iter} [prune_state: {self.prune_state} method: {self.args.method} compare_mode: {self.args.compare_mode} greg_mode: {self.args.greg_mode}] LR: {learning_rate} " + "-"*40)
 
             # @mst: regularization loss: sparsity structure alignment (SSA)
             if self.prune_state in ['ssa']:
@@ -299,7 +302,7 @@ class Pruner(MetaPruner):
 
         self.loss.end_log(len(self.loader_train))
         self.error_last = self.loss.log[-1, -1]
-        self.optimizer.schedule()
+        # self.optimizer.schedule() # use fixed LR in pruning
 
     def _print_reg_status(self):
         self.logprint('************* Regularization Status *************')

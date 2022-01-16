@@ -201,6 +201,7 @@ parser.add_argument('--prune_criterion', type=str, default='wn_scale', choices=[
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')
 parser.add_argument('--lw_spr', type=float, default=1, help='lw for loss of sparsity pattern regularization')
 parser.add_argument('--iter_finish_spr', '--iter_ssa', dest='iter_ssa', type=int, default=17260, help='863x20 = 20 epochs')
+parser.add_argument('--lr_prune', type=float, default=0.0002)
 
 args = parser.parse_args()
 template.set_template(args)
