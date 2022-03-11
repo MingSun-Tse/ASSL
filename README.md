@@ -60,10 +60,10 @@ CUDA_VISIBLE_DEVICES=3 python main.py --model LEDSR --scale 4 --patch_size 192 -
 
 ## Results
 ### Quantitative Results
-(TODO)
+![](figs/psnr_ssim.png)
 
 ### Visual Results
-(TODO)
+![](figs/visual_urban100_x4.png)
 
 ## Citation
 If you find the code helpful in your resarch or work, please cite the following papers.
@@ -76,7 +76,7 @@ If you find the code helpful in your resarch or work, please cite the following 
   year = {2017}
 }
 
-@inproceedings{wang2021assl,
+@inproceedings{zhang2021aligned,
     title={Aligned Structured Sparsity Learning for Efficient Image Super-Resolution},
     author={Zhang*, Yulun and Wang*, Huan and Qin, Can and Fu, Yun},
     booktitle={NeurIPS},
