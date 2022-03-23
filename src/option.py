@@ -151,44 +151,24 @@ parser.add_argument('--save_gt', action='store_true',
 
 # Routine arguments to set up experiment dir
 parser.add_argument('--project_name', type=str, default="")
-# parser.add_argument('--debug', action="store_true")
 parser.add_argument('--screen_print', action="store_true")
 parser.add_argument('--print_interval', type=int, default=100)
 
 # Lightweight SR
-parser.add_argument('--method', type=str, default='', choices=['', 'KD', 'L1', 'GReg-1', 'ASSL'],
-                    help='method name')
-parser.add_argument('--T_model', type=str, 
-                    help='teacher model name')
-parser.add_argument('--T_weights', type=str,
-                    help='teacher checkpoint for KD')
-parser.add_argument('--T_n_resblocks', type=int, default=16,
-                    help='number of residual blocks')
-parser.add_argument('--T_n_feats', type=int, default=64,
-                    help='number of feature maps')
-parser.add_argument('--lw_kd', type=float, default=1,
-                    help='loss weight of the kd loss')
-parser.add_argument('--wg', type=str, default='filter', choices=['filter', 'weight'],
-                    help='weight group to prune')
-parser.add_argument('--stage_pr', type=str, default="", 
-                    help='to appoint layer-wise pruning ratio')
-parser.add_argument('--skip_layers', type=str, default="", 
-                    help='layers to skip when pruning')
-parser.add_argument('--reinit_layers', type=str, default="", 
-                    help='layers to reinit (not inherit weights)')
-parser.add_argument('--same_pruned_wg_layers', type=str, default='',
-                    help='layers to be set with the same pruned weight group')
-parser.add_argument('--same_pruned_wg_criterion', type=str, default='rand', choices=['rand', 'reg'],
-                    help='use which criterion to select pruned wg')
-parser.add_argument('--num_layers', type=int, default=1000,
-                    help='num of layers in the network')
-parser.add_argument('--resume_path', type=str, default='',
-                    help='path of the checkpoint to resume')
+parser.add_argument('--method', type=str, default='', choices=['', 'ASSL', 'L1'], help='method name')
+parser.add_argument('--wg', type=str, default='filter', choices=['filter', 'weight'], help='weight group to prune')
+parser.add_argument('--stage_pr', type=str, default="", help='to appoint layer-wise pruning ratio')
+parser.add_argument('--skip_layers', type=str, default="",  help='layers to skip when pruning')
+parser.add_argument('--reinit_layers', type=str, default="", help='layers to reinit (not inherit weights)')
+parser.add_argument('--same_pruned_wg_layers', type=str, default='', help='layers to be set with the same pruned weight group')
+parser.add_argument('--same_pruned_wg_criterion', type=str, default='rand', choices=['rand', 'reg'], help='use which criterion to select pruned wg')
+parser.add_argument('--num_layers', type=int, default=1000, help='num of layers in the network')
+parser.add_argument('--resume_path', type=str, default='', help='path of the checkpoint to resume')
 
-# GReg method related (default setting is for ImageNet):
+# ASSL
 parser.add_argument('--update_reg_interval', type=int, default=5)
 parser.add_argument('--stabilize_reg_interval', type=int, default=40000)
-parser.add_argument('--reg_upper_limit', type=float, default=1.0)
+parser.add_argument('--reg_upper_limit', type=float, default=1)
 parser.add_argument('--reg_granularity_prune', type=float, default=1e-4)
 parser.add_argument('--pick_pruned', type=str, default='min', choices=['min', 'max', 'rand'])
 parser.add_argument('--not_apply_reg', dest='apply_reg', action='store_false', default=True)
@@ -196,8 +176,6 @@ parser.add_argument('--layer_chl', type=str, default='', help='manually assign t
 parser.add_argument('--greg_mode', type=str, default='part', choices=['part', 'all'])
 parser.add_argument('--compare_mode', type=str, default='local', choices=['local', 'global'])
 parser.add_argument('--prune_criterion', type=str, default='wn_scale', choices=['l1-norm', 'wn_scale'])
-
-# WN+Reg
 parser.add_argument('--wn', action='store_true', help='if use weight normalization')
 parser.add_argument('--lw_spr', type=float, default=1, help='lw for loss of sparsity pattern regularization')
 parser.add_argument('--iter_finish_spr', '--iter_ssa', dest='iter_ssa', type=int, default=17260, help='863x20 = 20 epochs')
@@ -219,10 +197,9 @@ for arg in vars(args):
     elif vars(args)[arg] == 'False':
         vars(args)[arg] = False
 
-
 # parse for layer-wise prune ratio
 # stage_pr is a list of float, skip_layers is a list of strings
-if args.method in ['L1', 'GReg-1', 'ASSL']:
+if args.method in ['L1', 'ASSL']:
     assert args.stage_pr
     if glob.glob(args.stage_pr): # 'stage_pr' is a path
         args.stage_pr = check_path(args.stage_pr)
