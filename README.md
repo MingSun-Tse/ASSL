@@ -23,7 +23,7 @@ This repository is for a new network pruning method (*Aligned Structured Sparsit
   - [Acknowledgements](#acknowledgements)
 
 ## Introduction
-Lightweight image super-resolution (SR) networks have obtained promising results with moderate model size. Many SR methods have focused on designing lightweight architectures, which neglect to further reduce the redundancy of network parameters. On the other hand, model compression techniques, like neural architecture search and knowledge distillation, typically consume considerable memory and computation resources. In contrast, network pruning is a cheap and effective model compression technique. However, it is hard to be applied to SR networks directly, because filter pruning for residual blocks is well-known tricky. To address the above issues, we propose aligned structured sparsity learning (ASSL), which introduces a weight normalization layer and applies $L_2$ regularization to the scale parameters for sparsity. To align the pruned filter locations across different layers, we propose a *sparsity structure alignment* penalty term, which minimizes the norm of soft mask gram matrix. We apply aligned structured sparsity learning strategy to train efficient image SR network, named as ASSLN, with smaller model size and lower computation than state-of-the-art methods. We conduct extensive comparisons with lightweight SR networks. Our ASSLN achieves superior performance gains over recent methods quantitatively and visually.
+Lightweight image super-resolution (SR) networks have obtained promising results with moderate model size. Many SR methods have focused on designing lightweight architectures, which neglect to further reduce the redundancy of network parameters. On the other hand, model compression techniques, like neural architecture search and knowledge distillation, typically consume considerable memory and computation resources. In contrast, network pruning is a cheap and effective model compression technique. However, it is hard to be applied to SR networks directly, because filter pruning for residual blocks is well-known tricky. To address the above issues, we propose aligned structured sparsity learning (ASSL), which introduces a weight normalization layer and applies L2 regularization to the scale parameters for sparsity. To align the pruned filter locations across different layers, we propose a *sparsity structure alignment* penalty term, which minimizes the norm of soft mask gram matrix. We apply aligned structured sparsity learning strategy to train efficient image SR network, named as ASSLN, with smaller model size and lower computation than state-of-the-art methods. We conduct extensive comparisons with lightweight SR networks. Our ASSLN achieves superior performance gains over recent methods quantitatively and visually.
 
 ## Set up code and environment
 - Download the code:
@@ -31,7 +31,10 @@ Lightweight image super-resolution (SR) networks have obtained promising results
 git clone git@github.com:mingsun-tse/ASSL.git -b master
 cd ASSL/src
 ```
-- All the dependant libraries are summarized in `requirements.txt` (PyTorch 1.2.0 is used). Simply install them by `pip install -r requirements.txt`.
+- All the dependencies are summarized in `requirements.txt` (PyTorch 1.2.0 is used). Simply install them by 
+```
+pip install -r requirements.txt
+```
 
 
 ## Train
