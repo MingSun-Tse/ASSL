@@ -30,7 +30,7 @@ pip install -r requirements.txt
 ## Train
 ### Prepare training data 
 
-1. Download DIV2K training data (800 training + 100 validtion images) from [DIV2K dataset](https://data.vision.ee.ethz.ch/cvl/DIV2K/) or [SNU_CVLab](https://cv.snu.ac.kr/research/EDSR/DIV2K.tar).
+1. Download DIV2K training data (800 training + 100 validtion images) from [DIV2K dataset](https://data.vision.ee.ethz.ch/cvl/DIV2K/) or [SNU_CVLab](https://cv.snu.ac.kr/research/EDSR/DIV2K.tar) and [Flickr2K dataset](https://cv.snu.ac.kr/research/EDSR/Flickr2K.tar) from SNU_CVLab.
 
 2. Specify '--dir_data' based on the HR and LR images path. In option.py, '--ext' is set as 'sep_reset', which first convert .png to .npy. If all the training images (.png) are converted to .npy files, then set '--ext sep' to skip converting files.
 
@@ -64,7 +64,7 @@ After training, to use the trained models to generate HR images, you may use the
 wget https://github.com/MingSun-Tse/ASSL/releases/download/v0.1/final_models.zip
 unzip final_models.zip
 mv final_models.zip ..
-python main.py --data_test Demo --scale 4 --reset --dir_demo <your_test_data_path> --test_only --save_results --pre_train ../final_models/ASSLN_F49_X4.pt --save Test_ASSLN_F49_X4
+python main.py --data_test Demo --scale 4 --dir_demo <your_test_data_path> --test_only --save_results --pre_train ../final_models/ASSLN_F49_X4.pt --save Test_ASSLN_F49_X4
 ```
 where `<your_test_data_path>` refers to the test data path on your computer. One example on our PC is: `/media/yulun/10THD1/data/super-resolution/LRBI/Set5/x4`.
 
