@@ -63,7 +63,7 @@ After training, to use the trained models to generate HR images, you may use the
 ```
 wget https://github.com/MingSun-Tse/ASSL/releases/download/v0.1/final_models.zip
 unzip final_models.zip
-mv final_models.zip ..
+mv final_models ..
 python main.py --data_test Demo --scale 4 --dir_demo <your_test_data_path> --test_only --save_results --pre_train ../final_models/ASSLN_F49_X4.pt --save Test_ASSLN_F49_X4
 ```
 where `<your_test_data_path>` refers to the test data path on your computer. One example on our PC is: `/media/yulun/10THD1/data/super-resolution/LRBI/Set5/x4`.
