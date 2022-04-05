@@ -1,8 +1,9 @@
 # ASSL (NeurIPS'21 Spotlight)
 
-<div align="left">
-    <a><img src="figs/smile.png"  height="70px" ></a>
-    <a><img src="figs/neu.png"  height="70px" ></a>
+<div align="center">
+    <a><img src="figs/smile.png"  height="90px" ></a>
+    &nbsp &nbsp
+    <a><img src="figs/neu.png"  height="90px" ></a>
 </div>
 
 This repository is for a new network pruning method (`Aligned Structured Sparsity Learning, ASSL`) for efficient single image super-resolution (SR), introduced in our NeurIPS 2021 **Spotlight** paper:
